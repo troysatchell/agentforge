@@ -1,0 +1,27 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "agentforge"
+version = "0.1.0"
+description = "AgentForge — adversarial red-team platform for the Clinical Co-Pilot (Week 3)"
+requires-python = ">=3.11"
+dependencies = [
+    "pydantic>=2.6",
+    "langgraph>=0.2",
+    "jsonschema[format-nongpl]>=4.20",
+    "python-dotenv>=1.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["agentforge"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
