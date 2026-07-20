@@ -1,0 +1,71 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agentforge/contracts/v1/orchestrator_to_redteam.schema.json",
+  "title": "AttackDirective",
+  "description": "Edge (1) — Orchestrator instructs the Red Team what to target next, based on coverage state.",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "directive_id",
+    "correlation_id",
+    "attack_category",
+    "owasp_mapping",
+    "authorized_scope",
+    "budget",
+    "issued_at"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": { "const": "1.0.0" },
+    "directive_id": { "type": "string", "format": "uuid" },
+    "correlation_id": { "type": "string", "description": "Threads one campaign across all agents." },
+    "attack_category": { "$ref": "https://agentforge/contracts/v1/common.schema.json#/$defs/attackCategory" },
+    "attack_subcategory": { "type": "string", "description": "e.g. indirect-injection-feedback-loop, cross-patient-read, local-file-read." },
+    "owasp_mapping": { "$ref": "https://agentforge/contracts/v1/common.schema.json#/$defs/owaspMapping" },
+    "authorized_scope": {
+      "type": "object",
+      "description": "Review fix #2 — the GROUND TRUTH the Judge adjudicates against: what this campaign is AUTHORIZED to reach. Set by the Orchestrator from campaign config, NEVER attacker-chosen. The Judge resolves this by correlation_id from the campaign store; it does not trust any authorization context echoed by the Red Team. Enables cross-patient / foreign-file verdicts relative to what was permitted.",
+      "required": ["authorized_patient_uuid"],
+      "additionalProperties": false,
+      "properties": {
+        "authorized_patient_uuid": { "type": "string", "description": "The single patient the launch-bound token is authorized for." },
+        "target_base_url": { "type": ["string", "null"], "format": "uri", "description": "Must match the target-URL allowlist." },
+        "ground_truth_snapshot_ref": { "type": ["string", "null"], "description": "Optional id of a pinned chart snapshot the JUDGE reads to verify grounding — obtained by the Judge itself, not passed through the Red Team." }
+      }
+    },
+    "mutation_axis": {
+      "type": ["string", "null"],
+      "description": "If mutating a partial success, the axis to vary (e.g. delimiter-evasion, role-reframe, encoding). Null for fresh generation."
+    },
+    "seed_refs": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Exploit-DB ids or seed-corpus ids the Red Team should extend."
+    },
+    "parent_attack_id": {
+      "type": ["string", "null"],
+      "description": "If this directive mutates a specific prior attack, its id. Enables lineage + novelty tracking."
+    },
+    "coverage_context": {
+      "type": "object",
+      "description": "Why the Orchestrator chose this target — the signal it read.",
+      "additionalProperties": false,
+      "properties": {
+        "open_findings_in_category": { "type": "integer", "minimum": 0 },
+        "cases_tested_in_category": { "type": "integer", "minimum": 0 },
+        "last_regression_at": { "type": ["string", "null"], "format": "date-time" }
+      }
+    },
+    "budget": {
+      "type": "object",
+      "required": ["max_usd", "max_attempts"],
+      "additionalProperties": false,
+      "properties": {
+        "max_usd": { "type": "number", "minimum": 0, "description": "Halt when spend hits this without signal." },
+        "max_attempts": { "type": "integer", "minimum": 1 },
+        "max_turns_per_sequence": { "type": "integer", "minimum": 1, "default": 5 }
+      }
+    },
+    "issued_at": { "type": "string", "format": "date-time" }
+  }
+}

@@ -1,0 +1,34 @@
+# --- secrets / credentials (this platform holds LLM API keys + the target's OAuth creds) ---
+.env
+.env.*
+!.env.example
+*.local
+secrets/
+*.token
+*.pem
+
+# --- python (platform is expected to be Python; pending D1) ---
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+*.egg-info/
+
+# --- runtime data (traces / runs / local exploit DB) ---
+*.sqlite
+*.sqlite3
+runs/
+traces/
+*.trace.jsonl
+
+# --- os / editor ---
+.DS_Store
+.idea/
+.vscode/
+
+
+#Ignore vscode AI rules
+.github/instructions/codacy.instructions.md

@@ -1,0 +1,116 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agentforge/contracts/v1/errors.schema.json",
+  "title": "AgentError",
+  "description": "Typed error envelope for every known platform failure mode. One discriminated union on error_type; every error carries correlation_id + the raising agent for end-to-end traceability. Review fix #9: each detail branch is closed (additionalProperties:false) so a wrong-type payload cannot masquerade as another error.",
+  "type": "object",
+  "required": ["schema_version", "error_type", "correlation_id", "raised_by", "raised_at", "detail"],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": { "const": "1.0.0" },
+    "error_type": {
+      "type": "string",
+      "enum": ["target_unreachable", "budget_exceeded", "judge_timeout", "no_findings", "regression_detected"]
+    },
+    "correlation_id": { "type": "string" },
+    "raised_by": {
+      "type": "string",
+      "enum": ["orchestrator", "red_team", "judge", "documentation", "harness"]
+    },
+    "raised_at": { "type": "string", "format": "date-time" },
+    "detail": {
+      "type": "object",
+      "description": "Type-specific payload; constrained per error_type by the allOf branches below."
+    }
+  },
+  "allOf": [
+    {
+      "if": { "properties": { "error_type": { "const": "target_unreachable" } }, "required": ["error_type"] },
+      "then": {
+        "properties": {
+          "detail": {
+            "type": "object",
+            "required": ["route", "attempts", "last_http_status", "action"],
+            "additionalProperties": false,
+            "properties": {
+              "route": { "type": "string" },
+              "attempts": { "type": "integer", "minimum": 1 },
+              "last_http_status": { "type": ["integer", "null"] },
+              "action": { "type": "string", "enum": ["retry_backoff", "halt_campaign"], "description": "Bounded backoff, then halt + alert." }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": { "properties": { "error_type": { "const": "budget_exceeded" } }, "required": ["error_type"] },
+      "then": {
+        "properties": {
+          "detail": {
+            "type": "object",
+            "required": ["spent_usd", "ceiling_usd", "signal_produced", "action"],
+            "additionalProperties": false,
+            "properties": {
+              "spent_usd": { "type": "number", "minimum": 0 },
+              "ceiling_usd": { "type": "number", "minimum": 0 },
+              "signal_produced": { "type": "boolean", "description": "False = cost accrued without signal -> halt (the core Orchestrator guardrail)." },
+              "action": { "type": "string", "const": "halt_campaign" }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": { "properties": { "error_type": { "const": "judge_timeout" } }, "required": ["error_type"] },
+      "then": {
+        "properties": {
+          "detail": {
+            "type": "object",
+            "required": ["attack_id", "timeout_ms", "action"],
+            "additionalProperties": false,
+            "properties": {
+              "attack_id": { "type": "string", "format": "uuid" },
+              "timeout_ms": { "type": "integer", "minimum": 0 },
+              "action": { "type": "string", "enum": ["requeue_once", "escalate_human"], "description": "Mark unadjudicated, requeue once, then human." }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": { "properties": { "error_type": { "const": "no_findings" } }, "required": ["error_type"] },
+      "then": {
+        "properties": {
+          "detail": {
+            "type": "object",
+            "required": ["category", "attempts_in_window", "action"],
+            "additionalProperties": false,
+            "properties": {
+              "category": { "$ref": "https://agentforge/contracts/v1/common.schema.json#/$defs/attackCategory" },
+              "attempts_in_window": { "type": "integer", "minimum": 0 },
+              "action": { "type": "string", "const": "redirect_next_gap", "description": "Close category covered-for-now; redirect Red Team." }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": { "properties": { "error_type": { "const": "regression_detected" } }, "required": ["error_type"] },
+      "then": {
+        "properties": {
+          "detail": {
+            "type": "object",
+            "required": ["exploit_id", "reappeared_in_version", "action"],
+            "additionalProperties": false,
+            "properties": {
+              "exploit_id": { "type": "string" },
+              "reappeared_in_version": { "type": "string" },
+              "cross_category": { "type": ["string", "null"] },
+              "action": { "type": "string", "const": "trigger_full_regression" }
+            }
+          }
+        }
+      }
+    }
+  ]
+}

@@ -1,0 +1,56 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agentforge/contracts/v1/common.schema.json",
+  "title": "AgentForge shared definitions (v1)",
+  "description": "Shared $defs referenced by every inter-agent contract. Registering this schema is required for the others to resolve their $refs.",
+  "$defs": {
+    "attackCategory": {
+      "type": "string",
+      "description": "CANONICAL taxonomy = the six Week-3 Stage-2 threat categories (tool_misuse is one of the six). OWASP ids live in owaspMapping, never here — one field, one taxonomy. Shared by every contract so the same value set is enforced end-to-end.",
+      "enum": [
+        "prompt_injection",
+        "data_exfiltration",
+        "state_corruption",
+        "tool_misuse",
+        "denial_of_service",
+        "identity_role_exploitation"
+      ]
+    },
+    "owaspMapping": {
+      "type": "object",
+      "description": "The engineering-requirement OWASP mapping. Kept separate from attackCategory so the spec's six-category structure and the OWASP dual-Top-10 mapping never collide.",
+      "required": ["web", "llm"],
+      "additionalProperties": false,
+      "properties": {
+        "web": {
+          "type": ["string", "null"],
+          "description": "OWASP Web Top 10 id, e.g. A01:2021-broken-access-control. Null when not web-applicable."
+        },
+        "llm": {
+          "type": ["string", "null"],
+          "description": "OWASP LLM Top 10 id, e.g. LLM01:2025-prompt-injection. Null when not LLM-applicable."
+        }
+      }
+    },
+    "oracleResult": {
+      "type": "object",
+      "description": "One deterministic oracle's observation. GENERIC BY DESIGN (review fix #6): a new finding class adds a new oracle_id string, never a new named contract field — so the contract does not over-fit to specific findings (V1/V5 etc.) and does not need a version bump each time the Red Team learns a new attack.",
+      "required": ["oracle_id", "fired"],
+      "additionalProperties": false,
+      "properties": {
+        "oracle_id": {
+          "type": "string",
+          "description": "Stable oracle id, e.g. phi_pattern | grounding_fabrication | cross_patient | foreign_file_bytes | cost_overage | budget_refused."
+        },
+        "fired": {
+          "type": ["boolean", "null"],
+          "description": "True = the oracle's condition was met; false = not met; null = the oracle was not evaluated for this attack."
+        },
+        "evidence": {
+          "type": ["string", "null"],
+          "description": "Short, PHI-FREE evidence label (a pattern name / count / status token) — never raw PHI or verbatim chart content."
+        }
+      }
+    }
+  }
+}

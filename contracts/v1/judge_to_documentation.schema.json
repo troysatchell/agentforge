@@ -1,0 +1,72 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agentforge/contracts/v1/judge_to_documentation.schema.json",
+  "title": "Verdict",
+  "description": "Edge (5) — the Judge's adjudicated verdict. ROUTING (review fix #10): only outcome=success flows to the Documentation Agent; ALL outcomes persist to the exploit DB; outcome=partial also routes to the Orchestrator as a mutation candidate. 'predicate_fired' is what makes a regression test assert SIGNAL, not a generic pass.",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "verdict_id",
+    "attack_id",
+    "correlation_id",
+    "outcome",
+    "predicate_fired",
+    "severity",
+    "regression_flag",
+    "adjudicated_at"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": { "const": "1.0.0" },
+    "verdict_id": { "type": "string", "format": "uuid" },
+    "attack_id": { "type": "string", "format": "uuid", "description": "The AttackResult this adjudicates." },
+    "correlation_id": { "type": "string" },
+    "outcome": {
+      "type": "string",
+      "enum": ["success", "fail", "partial"],
+      "description": "success = exploit confirmed. ROUTING: only `success` is sent to Documentation; `partial` routes to the Orchestrator as a mutation candidate; all three persist to the exploit DB. Documentation never files a `partial` or a `fail`."
+    },
+    "predicate_fired": {
+      "type": ["string", "null"],
+      "description": "The exact deterministic predicate that decided success, in one sentence, e.g. 'non-patient server-file bytes appeared in the VLM extraction'. Null unless outcome=success."
+    },
+    "judge_type": {
+      "type": "string",
+      "enum": ["deterministic_oracle", "semantic_llm"],
+      "default": "deterministic_oracle",
+      "description": "Which judge decided. MVP = deterministic_oracle only; semantic_llm is governed by labeled ground-truth + the never-approve-a-confirmed-exploit invariant."
+    },
+    "oracle_results": {
+      "type": "array",
+      "description": "Review fix #6 — which oracles the JUDGE ran (recomputed independently of the Red Team's advisory hints) and their outcomes. Generic list; a new finding class = a new oracle_id, not a new field.",
+      "items": { "$ref": "https://agentforge/contracts/v1/common.schema.json#/$defs/oracleResult" }
+    },
+    "ground_truth_ref": {
+      "type": ["string", "null"],
+      "description": "Review fix #2 — the pinned chart snapshot / authorized-scope id the Judge adjudicated grounding & cross-patient against, obtained independently by correlation_id. Makes grounding verdicts falsifiable/auditable."
+    },
+    "severity": {
+      "type": "string",
+      "enum": ["critical", "high", "medium", "low", "false_positive"]
+    },
+    "attack_category": { "$ref": "https://agentforge/contracts/v1/common.schema.json#/$defs/attackCategory" },
+    "owasp_mapping": { "$ref": "https://agentforge/contracts/v1/common.schema.json#/$defs/owaspMapping" },
+    "regression_flag": {
+      "type": "boolean",
+      "description": "True = a previously-fixed exploit reappeared. Blocks any 'resilience improving' claim."
+    },
+    "cross_category_regression": {
+      "type": ["string", "null"],
+      "description": "If fixing one category broke another, the attackCategory that regressed."
+    },
+    "reproduction_ref": {
+      "type": "string",
+      "description": "sequence_hash / exploit-DB id — the minimal reproducible sequence."
+    },
+    "target_version": {
+      "type": ["string", "null"],
+      "description": "The build the verdict is attributed to. Null when the platform could not manufacture a target build-id (see redteam_to_judge.target_version + README)."
+    },
+    "adjudicated_at": { "type": "string", "format": "date-time" }
+  }
+}

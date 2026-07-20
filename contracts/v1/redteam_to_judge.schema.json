@@ -1,0 +1,83 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agentforge/contracts/v1/redteam_to_judge.schema.json",
+  "title": "AttackResult",
+  "description": "Edge (3) — Red Team hands a completed attack to the Judge for INDEPENDENT adjudication. Review fix #1/#2: the Judge shares NO context with the Red Team, RECOMPUTES every verdict signal from input_sequence + target_response with its own oracles, and resolves the campaign's authorized_scope + ground truth by correlation_id from the campaign store — it never trusts anything the Red Team asserts as a verdict signal or as authorization context.",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "attack_id",
+    "correlation_id",
+    "attack_category",
+    "owasp_mapping",
+    "sequence_hash",
+    "input_sequence",
+    "target_response",
+    "executed_at"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": { "const": "1.0.0" },
+    "attack_id": { "type": "string", "format": "uuid" },
+    "correlation_id": {
+      "type": "string",
+      "description": "The Judge resolves the campaign's authorized_scope + ground-truth snapshot from THIS id — it does not accept authorization context from the Red Team."
+    },
+    "directive_id": { "type": "string", "format": "uuid", "description": "The directive that produced this attack." },
+    "parent_attack_id": {
+      "type": ["string", "null"],
+      "description": "Attack this was mutated from. Null = freshly generated. Powers the lineage chain (novelty is measured separately — see sequence_hash)."
+    },
+    "attack_category": { "$ref": "https://agentforge/contracts/v1/common.schema.json#/$defs/attackCategory" },
+    "attack_subcategory": { "type": "string" },
+    "owasp_mapping": { "$ref": "https://agentforge/contracts/v1/common.schema.json#/$defs/owaspMapping" },
+    "sequence_hash": {
+      "type": "string",
+      "description": "sha256 of the canonicalized input_sequence. DEDUP KEY and a SYNTACTIC-novelty LOWER BOUND only — a new hash is necessary but not sufficient for true novelty (synonyms/reordering produce new hashes for equivalent attacks). Real novelty = embedding distance vs the seed corpus, computed by the Orchestrator (see README)."
+    },
+    "input_sequence": {
+      "type": "array",
+      "description": "The full multi-turn attack as sent to the live target — the Judge's primary evidence.",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["turn_index", "route", "payload"],
+        "additionalProperties": false,
+        "properties": {
+          "turn_index": { "type": "integer", "minimum": 0 },
+          "route": { "type": "string", "description": "e.g. POST /api/copilot/turn, POST /api/copilot/document." },
+          "payload": { "type": "object", "description": "The request body sent (question, prior_turns, file_path, etc.). Shape varies by route — intentionally open." }
+        }
+      }
+    },
+    "target_response": {
+      "type": "object",
+      "required": ["http_status", "body"],
+      "additionalProperties": false,
+      "properties": {
+        "http_status": { "type": "integer" },
+        "body": { "description": "Raw target response (object or string) — unconstrained by design; the Judge parses it with its own oracles." }
+      }
+    },
+    "observed_hints": {
+      "type": "array",
+      "description": "Review fix #1 — ADVISORY ONLY. The Red Team's own observations, offered as a convenience. The Judge RECOMPUTES every verdict signal itself and MUST NOT treat these as authoritative (an agent that both generates and evaluates is compromised by design). Present so the Red Team can flag what looked interesting, never so the Judge can shortcut.",
+      "items": { "$ref": "https://agentforge/contracts/v1/common.schema.json#/$defs/oracleResult" }
+    },
+    "execution_telemetry": {
+      "type": "object",
+      "description": "Execution FACTS the Red Team legitimately measures (not verdict signals): tokens + cost of generating and executing this attack.",
+      "additionalProperties": false,
+      "properties": {
+        "input_tokens": { "type": ["integer", "null"] },
+        "output_tokens": { "type": ["integer", "null"] },
+        "cost_usd": { "type": ["number", "null"], "minimum": 0 }
+      }
+    },
+    "target_version": {
+      "type": ["string", "null"],
+      "description": "Target build-id / git-SHA. The target exposes NONE natively (orientation §D.4), so the platform MANUFACTURES this (target-repo SHA at deploy / deploy metadata / hash of /ready output). Null disables regression-to-deploy attribution — see README."
+    },
+    "executed_at": { "type": "string", "format": "date-time" }
+  }
+}

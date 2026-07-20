@@ -1,0 +1,380 @@
+<title>AgentForge — Architecture Defense</title>
+<style>
+  :root{
+    --ground:#0a0e15;--panel:#131c2c;--line:#24314a;--line-2:#33456a;
+    --text:#e7edf6;--muted:#93a1b8;--dim:#5f6d86;
+    --accent:#2dd4bf;
+    --ai:#f0a83c;--det:#6ea8de;--target:#e5694f;--store:#9aa8be;--human:#b28bf0;
+    --crit:#ff5f56;--high:#ff9d45;--med:#ffd24a;--ok:#3ecf9a;
+    --sans:-apple-system,system-ui,"Segoe UI",Roboto,sans-serif;
+    --mono:ui-monospace,"SF Mono","JetBrains Mono",Menlo,Consolas,monospace;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;height:100%}
+  body{background:
+      radial-gradient(1200px 600px at 78% -8%,rgba(45,212,191,.07),transparent 60%),
+      radial-gradient(900px 500px at 0% 100%,rgba(240,168,60,.05),transparent 55%),
+      var(--ground);
+    color:var(--text);font-family:var(--sans);overflow:hidden}
+  .deck{position:fixed;inset:0}
+  .slide{position:absolute;inset:0;display:flex;flex-direction:column;justify-content:center;
+    padding:clamp(32px,6vw,90px);opacity:0;visibility:hidden;transform:translateY(14px);
+    transition:opacity .34s ease,transform .34s ease}
+  .slide.active{opacity:1;visibility:visible;transform:none}
+  .wrap{width:100%;max-width:1080px;margin:0 auto}
+
+  .eyebrow{font-family:var(--mono);font-size:clamp(11px,1.5vw,13px);letter-spacing:.22em;text-transform:uppercase;color:var(--accent);font-weight:600;margin-bottom:20px}
+  h1{font-size:clamp(30px,6.4vw,68px);line-height:1.02;letter-spacing:-.02em;font-weight:720;margin:0;text-wrap:balance}
+  h2{font-size:clamp(26px,5vw,50px);line-height:1.04;letter-spacing:-.015em;font-weight:700;margin:0;text-wrap:balance}
+  .lead{color:var(--muted);font-size:clamp(15px,2.1vw,21px);margin-top:22px;max-width:60ch;line-height:1.5}
+  .mono{font-family:var(--mono)}
+  .accent{color:var(--accent)}
+
+  /* title */
+  .brand{display:flex;align-items:center;gap:14px;margin-bottom:30px}
+  .brand .g{width:20px;height:20px;border:3px solid var(--accent);border-radius:4px;transform:rotate(45deg);box-shadow:0 0 20px rgba(45,212,191,.5)}
+  .brand .w{font-family:var(--mono);font-weight:700;font-size:clamp(20px,3vw,26px)}
+  .brand .w b{color:var(--accent)}
+  .titlemeta{margin-top:30px;font-family:var(--mono);font-size:13px;color:var(--dim);letter-spacing:.05em}
+
+  /* chips */
+  .chips{display:flex;flex-wrap:wrap;gap:10px;margin-top:28px}
+  .chip{font-family:var(--mono);font-size:clamp(11px,1.5vw,14px);padding:7px 14px;border-radius:999px;border:1px solid var(--line-2);color:var(--muted);display:inline-flex;align-items:center;gap:8px}
+  .chip .dot{width:8px;height:8px;border-radius:50%}
+  .d-crit{background:var(--crit)}.d-high{background:var(--high)}.d-med{background:var(--med)}.d-ok{background:var(--ok)}
+
+  /* card grids */
+  .grid{display:grid;gap:16px;margin-top:30px}
+  .g4{grid-template-columns:repeat(4,1fr)} .g3{grid-template-columns:repeat(3,1fr)} .g2{grid-template-columns:repeat(2,1fr)}
+  @media(max-width:820px){.g4,.g3{grid-template-columns:repeat(2,1fr)}.g2{grid-template-columns:1fr}}
+  .card{background:rgba(19,28,44,.7);border:1px solid var(--line);border-radius:13px;padding:18px;position:relative;overflow:hidden}
+  .card .t{font-family:var(--mono);font-size:clamp(14px,1.8vw,17px);font-weight:700}
+  .card .r{font-family:var(--mono);font-size:11px;color:var(--dim);text-transform:uppercase;letter-spacing:.09em;margin-top:2px}
+  .card .b{font-size:13.5px;color:var(--muted);margin-top:10px;line-height:1.45}
+  .card.ai{border-color:rgba(240,168,60,.5)} .card.ai .t{color:var(--ai)}
+  .card.det{border-color:rgba(110,168,222,.5)} .card.det .t{color:var(--det)}
+  .card.human{border-color:rgba(178,139,240,.5)} .card.human .t{color:var(--human)}
+  .card .no{color:var(--crit);font-family:var(--mono);font-size:12.5px;margin-top:10px}
+
+  /* two-repo */
+  .repos{display:grid;grid-template-columns:1fr auto 1fr;align-items:center;gap:0;margin-top:34px;border:1px solid var(--line);border-radius:14px;overflow:hidden}
+  .repo{padding:22px 24px}
+  .repo.p{background:linear-gradient(180deg,rgba(45,212,191,.08),transparent)}
+  .repo.t{background:linear-gradient(180deg,rgba(229,105,79,.08),transparent)}
+  .repo .k{font-family:var(--mono);font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--dim)}
+  .repo h3{font-family:var(--mono);font-size:clamp(16px,2.4vw,22px);margin:8px 0 0}
+  .repo.p h3{color:var(--accent)} .repo.t h3{color:var(--target)}
+  .repo p{margin:8px 0 0;font-size:13px;color:var(--muted)}
+  .repo.p{border-right:0} .link{padding:0 22px;text-align:center;border-left:1px solid var(--line);border-right:1px solid var(--line)}
+  .link .v{font-family:var(--mono);font-size:12px;color:var(--text);font-weight:600}
+  .link .a{color:var(--accent);font-size:26px;line-height:1}
+  @media(max-width:720px){.repos{grid-template-columns:1fr}.link{border:0;border-top:1px solid var(--line);border-bottom:1px solid var(--line);padding:10px}.link .a{transform:rotate(90deg)}}
+
+  /* boundary rows */
+  .rows{margin-top:28px;display:flex;flex-direction:column;gap:0}
+  .brow{display:flex;gap:18px;align-items:baseline;padding:15px 0;border-top:1px solid var(--line)}
+  .brow:first-child{border-top:0}
+  .brow .n{font-family:var(--mono);color:var(--accent);font-size:15px;flex:0 0 30px}
+  .brow .h{font-family:var(--mono);font-size:clamp(14px,1.9vw,17px);color:var(--text);flex:0 0 40%}
+  .brow .d{color:var(--muted);font-size:13.5px}
+  @media(max-width:720px){.brow{flex-direction:column;gap:4px}.brow .h{flex-basis:auto}}
+
+  /* compare */
+  .compare{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:28px}
+  @media(max-width:680px){.compare{grid-template-columns:1fr}}
+  .col{background:rgba(19,28,44,.7);border:1px solid var(--line);border-radius:13px;padding:20px}
+  .col h3{font-family:var(--mono);font-size:15px;margin:0 0 4px}
+  .col.cfg h3{color:var(--det)} .col.bld h3{color:var(--accent)}
+  .col .s{font-size:12px;color:var(--dim);margin-bottom:14px}
+  .col .li{display:flex;gap:10px;padding:8px 0;font-size:13.5px;border-top:1px solid var(--line)}
+  .col .li:nth-child(3){border-top:0}
+  .col .li b{font-family:var(--mono);color:var(--text);font-weight:600;flex:0 0 96px}
+  .col .li span{color:var(--muted)}
+
+  /* mini table */
+  .kv{margin-top:28px;display:grid;grid-template-columns:repeat(2,1fr);gap:12px}
+  @media(max-width:680px){.kv{grid-template-columns:1fr}}
+  .kv .row{display:flex;gap:12px;align-items:center;background:rgba(19,28,44,.6);border:1px solid var(--line);border-radius:10px;padding:12px 15px}
+  .kv .row .role{font-family:var(--mono);font-size:13.5px;flex:0 0 130px;font-weight:600}
+  .kv .row .use{font-size:13px;color:var(--muted)}
+  .r-det{color:var(--det)} .r-ai{color:var(--ai)}
+
+  /* SVG loop */
+  .diagram{margin-top:26px;border:1px solid var(--line);border-radius:14px;background:
+      linear-gradient(rgba(255,255,255,.02) 1px,transparent 1px) 0 0/28px 28px,
+      linear-gradient(90deg,rgba(255,255,255,.02) 1px,transparent 1px) 0 0/28px 28px,
+      rgba(15,22,34,.5);padding:14px;overflow-x:auto}
+  .diagram svg{display:block;width:100%;min-width:640px;height:auto}
+  .leg{display:flex;flex-wrap:wrap;gap:16px;margin-top:16px;font-family:var(--mono);font-size:12px;color:var(--muted)}
+  .leg span{display:inline-flex;align-items:center;gap:7px} .leg .dt{width:9px;height:9px;border-radius:50%}
+
+  /* findings */
+  .find{border-left:4px solid var(--crit)}
+  .find.m{border-left-color:var(--med)}
+  .find .sev{font-family:var(--mono);font-size:11px;color:var(--muted);margin-top:8px}
+
+  /* status */
+  .pill{font-family:var(--mono);font-size:11px;font-weight:600;padding:3px 10px;border-radius:999px;display:inline-flex;align-items:center;gap:6px}
+  .pill::before{content:"";width:7px;height:7px;border-radius:50%}
+  .p-ok{color:#c6f4e2;background:rgba(62,207,154,.14)} .p-ok::before{background:var(--ok)}
+  .p-wait{color:#ffe4c9;background:rgba(255,157,69,.12)} .p-wait::before{background:var(--high)}
+
+  /* chrome */
+  .chrome{position:fixed;left:0;right:0;bottom:0;display:flex;align-items:center;gap:14px;padding:14px 22px;z-index:10;pointer-events:none}
+  .chrome .id{font-family:var(--mono);font-size:12px;color:var(--dim)}
+  .chrome .id b{color:var(--muted)}
+  .prog{flex:1;height:2px;background:var(--line);border-radius:2px;overflow:hidden}
+  .prog i{display:block;height:100%;background:var(--accent);width:0;transition:width .34s ease}
+  .nav{display:flex;gap:8px;pointer-events:auto}
+  .nav button{width:38px;height:38px;border-radius:9px;border:1px solid var(--line-2);background:rgba(19,28,44,.85);color:var(--text);font-size:16px;font-family:var(--mono);cursor:pointer}
+  .nav button:hover{border-color:var(--accent);color:var(--accent)}
+  .nav button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+  .count{font-family:var(--mono);font-size:12px;color:var(--muted);min-width:44px;text-align:right;font-variant-numeric:tabular-nums}
+  .khint{position:fixed;top:16px;right:20px;font-family:var(--mono);font-size:11px;color:var(--dim);z-index:10}
+  @media(prefers-reduced-motion:reduce){.slide{transition:none}.prog i{transition:none}}
+</style>
+
+<div class="khint">← → to navigate · F fullscreen</div>
+<div class="deck" id="deck">
+
+  <!-- 1 TITLE -->
+  <section class="slide active"><div class="wrap">
+    <div class="brand"><span class="g"></span><span class="w">Agent<b>Forge</b></span></div>
+    <h1>An autonomous red team<br>for a clinical AI.</h1>
+    <p class="lead">A multi-agent platform that discovers, evaluates, and documents vulnerabilities in the OpenEMR Clinical Co-Pilot — continuously, as attacks mutate.</p>
+    <div class="titlemeta">ARCHITECTURE DEFENSE · WEEK 3 · target: OpenEMR Clinical Co-Pilot (live)</div>
+  </div></section>
+
+  <!-- 2 PROBLEM -->
+  <section class="slide"><div class="wrap">
+    <div class="eyebrow">The problem</div>
+    <h2>Not one jailbreak — a system that hunts.</h2>
+    <p class="lead">Attack techniques mutate faster than anyone writes payloads. A fix validated once is never re-tested. And an agent that generates <em>and</em> judges its own attacks is compromised by design.</p>
+    <div class="chips">
+      <span class="chip">static suite → rots</span>
+      <span class="chip">single agent → conflict of interest</span>
+      <span class="chip">no coverage / regression visibility</span>
+    </div>
+  </div></section>
+
+  <!-- 3 TARGET -->
+  <section class="slide"><div class="wrap">
+    <div class="eyebrow">The target</div>
+    <h2>We attack the live co-pilot over HTTP.</h2>
+    <div class="repos">
+      <div class="repo p"><div class="k">the platform — this repo</div><h3>agentforge</h3><p>Never edits the target. Attacks it as an external client.</p></div>
+      <div class="link"><div class="v">attacks</div><div class="a">→</div><div class="v" style="color:var(--dim)">HTTP</div></div>
+      <div class="repo t"><div class="k">the target — OpenEMR fork</div><h3>Clinical Co-Pilot</h3><p>Deployed, live. You touch it only to fix &amp; redeploy.</p></div>
+    </div>
+    <div class="chips">
+      <span class="chip">deployed · demo data only</span>
+      <span class="chip">grey-box — we hold the threat model</span>
+      <span class="chip">launch-bound OAuth token</span>
+    </div>
+  </div></section>
+
+  <!-- 4 ARCHITECTURE -->
+  <section class="slide"><div class="wrap">
+    <div class="eyebrow">The architecture</div>
+    <h2>Four agents, one loop.</h2>
+    <div class="diagram">
+      <svg viewBox="0 0 1040 360" role="img" aria-label="Orchestrator directs Red Team, which attacks the target; the Judge adjudicates independently and writes to the exploit DB and Documentation; observability feeds back to the Orchestrator.">
+        <defs><marker id="a" viewBox="0 0 10 10" refX="8.4" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="context-stroke"/></marker></defs>
+        <g fill="none" stroke-width="1.8">
+          <path d="M230,93 H300" stroke="#2dd4bf" marker-end="url(#a)"/>
+          <path d="M490,93 H610" stroke="#2dd4bf" marker-start="url(#a)" marker-end="url(#a)"/>
+          <path d="M710,126 V250" stroke="#2dd4bf" marker-end="url(#a)"/>
+          <path d="M610,283 H520" stroke="#2dd4bf" marker-end="url(#a)"/>
+          <path d="M810,283 H860" stroke="#2dd4bf" marker-end="url(#a)"/>
+          <path d="M330,283 H230" stroke="#2dd4bf" marker-end="url(#a)"/>
+          <path d="M135,250 V126" stroke="#2dd4bf" marker-end="url(#a)"/>
+          <path d="M810,270 V150" stroke="#6b7789" stroke-dasharray="5 4" marker-end="url(#a)"/>
+        </g>
+        <g font-family="ui-monospace,Menlo,monospace" font-size="11" fill="#9fb0c9">
+          <text x="265" y="84" text-anchor="middle">① direct</text>
+          <text x="550" y="84" text-anchor="middle">② attack ⇄ resp</text>
+          <text x="726" y="196" text-anchor="middle" transform="rotate(-90 726 196)">③ result</text>
+          <text x="565" y="275" text-anchor="middle">④ verdict</text>
+          <text x="835" y="275" text-anchor="middle">⑤ report</text>
+          <text x="120" y="196" text-anchor="middle" transform="rotate(-90 120 196)">coverage·cost</text>
+          <text x="835" y="212" text-anchor="middle" transform="rotate(-90 835 212)">GT read</text>
+        </g>
+        <g font-family="ui-monospace,Menlo,monospace">
+          <rect x="40" y="60" width="190" height="66" rx="11" fill="rgba(110,168,222,.10)" stroke="#6ea8de" stroke-width="1.4"/><text x="135" y="90" text-anchor="middle" font-size="14" font-weight="700" fill="#6ea8de">Orchestrator</text><text x="135" y="108" text-anchor="middle" font-size="10" fill="#8a97ad" font-family="-apple-system,sans-serif">directs · halts</text>
+          <rect x="300" y="60" width="190" height="66" rx="11" fill="rgba(240,168,60,.10)" stroke="#f0a83c" stroke-width="1.4"/><text x="395" y="90" text-anchor="middle" font-size="14" font-weight="700" fill="#f0a83c">Red Team</text><text x="395" y="108" text-anchor="middle" font-size="10" fill="#8a97ad" font-family="-apple-system,sans-serif">generate·mutate</text>
+          <rect x="610" y="60" width="200" height="66" rx="11" fill="rgba(229,105,79,.12)" stroke="#e5694f" stroke-width="1.4"/><text x="710" y="90" text-anchor="middle" font-size="14" font-weight="700" fill="#e5694f">Clinical Co-Pilot</text><text x="710" y="108" text-anchor="middle" font-size="10" fill="#8a97ad" font-family="-apple-system,sans-serif">live target</text>
+          <rect x="610" y="250" width="200" height="66" rx="11" fill="rgba(110,168,222,.10)" stroke="#6ea8de" stroke-width="1.4"/><text x="710" y="280" text-anchor="middle" font-size="14" font-weight="700" fill="#6ea8de">Judge</text><text x="710" y="298" text-anchor="middle" font-size="10" fill="#8a97ad" font-family="-apple-system,sans-serif">recomputes</text>
+          <rect x="330" y="250" width="190" height="66" rx="11" fill="rgba(154,168,190,.10)" stroke="#9aa8be" stroke-width="1.4"/><text x="425" y="280" text-anchor="middle" font-size="13" font-weight="700" fill="#cdd7e6">Exploit DB</text><text x="425" y="298" text-anchor="middle" font-size="10" fill="#8a97ad" font-family="-apple-system,sans-serif">versioned</text>
+          <rect x="40" y="250" width="190" height="66" rx="11" fill="rgba(154,168,190,.10)" stroke="#9aa8be" stroke-width="1.4"/><text x="135" y="280" text-anchor="middle" font-size="13" font-weight="700" fill="#cdd7e6">Observability</text><text x="135" y="298" text-anchor="middle" font-size="10" fill="#8a97ad" font-family="-apple-system,sans-serif">trend·cost</text>
+          <rect x="860" y="250" width="160" height="66" rx="11" fill="rgba(240,168,60,.10)" stroke="#f0a83c" stroke-width="1.4"/><text x="940" y="280" text-anchor="middle" font-size="13" font-weight="700" fill="#f0a83c">Documentation</text><text x="940" y="298" text-anchor="middle" font-size="10" fill="#8a97ad" font-family="-apple-system,sans-serif">writes report</text>
+        </g>
+      </svg>
+    </div>
+    <div class="leg"><span><i class="dt" style="background:var(--det)"></i>deterministic</span><span><i class="dt" style="background:var(--ai)"></i>AI</span><span><i class="dt" style="background:var(--target)"></i>live target</span><span><i class="dt" style="background:var(--store)"></i>store</span></div>
+  </div></section>
+
+  <!-- 5 AGENTS -->
+  <section class="slide"><div class="wrap">
+    <div class="eyebrow">The agents · distinct roles &amp; trust</div>
+    <h2>Generate. Judge. Direct. Document.</h2>
+    <div class="grid g4">
+      <div class="card det"><div class="t">Orchestrator</div><div class="r">deterministic</div><div class="b">Reads state, directs the hunt, triggers regression.</div><div class="no">✕ never attacks</div></div>
+      <div class="card ai"><div class="t">Red Team</div><div class="r">AI · frontier/open</div><div class="b">Generates &amp; mutates multi-turn attacks vs the live target.</div><div class="no">✕ never judges itself</div></div>
+      <div class="card det"><div class="t">Judge</div><div class="r">deterministic-first</div><div class="b">Recomputes signals, owns its ground truth.</div><div class="no">✕ never shares Red Team context</div></div>
+      <div class="card ai"><div class="t">Documentation</div><div class="r">AI · gated</div><div class="b">Confirmed exploit → reproducible report.</div><div class="no">✕ no critical without a human</div></div>
+    </div>
+  </div></section>
+
+  <!-- 6 TRUST -->
+  <section class="slide"><div class="wrap">
+    <div class="eyebrow">Trust &amp; autonomy</div>
+    <h2>Where it runs alone — and where it stops.</h2>
+    <div class="rows">
+      <div class="brow"><div class="n">1</div><div class="h">Red Team ⟂ Judge</div><div class="d">Separate processes &amp; providers. The attacker can't influence its own verdict — enforced by the message shape, not just policy.</div></div>
+      <div class="brow"><div class="n">2</div><div class="h">Human gate on critical</div><div class="d">Low/medium auto-file; critical-severity publish needs approval.</div></div>
+      <div class="brow"><div class="n">3</div><div class="h">Remediation is advisory</div><div class="d">The platform proposes fixes; it never pushes them.</div></div>
+      <div class="brow"><div class="n">4</div><div class="h">Target-URL allow-list</div><div class="d">It can only be pointed at the sanctioned target.</div></div>
+    </div>
+  </div></section>
+
+  <!-- 7 CONTRACTS -->
+  <section class="slide"><div class="wrap">
+    <div class="eyebrow">How they communicate</div>
+    <h2>Typed, versioned messages.</h2>
+    <div class="grid g3">
+      <div class="card"><div class="r mono">① Orchestrator → Red Team</div><div class="t" style="color:var(--text)">AttackDirective</div><div class="b">category · mutation axis · authorized scope · budget</div></div>
+      <div class="card"><div class="r mono">③ Red Team → Judge</div><div class="t" style="color:var(--text)">AttackResult</div><div class="b">input + raw response + <em>advisory</em> hints</div></div>
+      <div class="card"><div class="r mono">⑤ Judge → Documentation</div><div class="t" style="color:var(--text)">Verdict</div><div class="b">outcome · predicate_fired · severity</div></div>
+    </div>
+    <p class="lead">Judge independence lives in the schema: the Red Team's signals are <span class="accent mono">advisory</span> — the Judge recomputes. Five typed errors, one canonical taxonomy, all versioned in <span class="mono accent">/contracts/v1</span>.</p>
+  </div></section>
+
+  <!-- 8 JUDGE / REGRESSION -->
+  <section class="slide"><div class="wrap">
+    <div class="eyebrow">Evaluation &amp; regression</div>
+    <h2>A test that passes for the <span class="accent">right</span> reason.</h2>
+    <p class="lead">A fix that changes behavior isn't the same as a fix. So every confirmed exploit is pinned to a deterministic signal and a build.</p>
+    <div class="grid g2">
+      <div class="card"><div class="t mono accent">predicate_fired</div><div class="b">The one-sentence deterministic reason "success" fired. The regression test asserts the signal — not a generic pass.</div></div>
+      <div class="card"><div class="t mono accent">target_version</div><div class="b">Every verdict is attributed to a build (the platform manufactures the id) → answers "more or less resilient over time?" and catches reappearance + cross-category regressions.</div></div>
+    </div>
+  </div></section>
+
+  <!-- 9 AI VS DETERMINISTIC -->
+  <section class="slide"><div class="wrap">
+    <div class="eyebrow">AI vs deterministic · cost</div>
+    <h2>AI where judgment lives — deterministic elsewhere.</h2>
+    <div class="kv">
+      <div class="row"><div class="role r-det">Orchestrator</div><div class="use">deterministic — auditable state logic</div></div>
+      <div class="row"><div class="role r-ai">Red Team</div><div class="use">open/frontier — offensive generation</div></div>
+      <div class="row"><div class="role r-det">Judge</div><div class="use">deterministic-first oracles</div></div>
+      <div class="row"><div class="role r-ai">Documentation</div><div class="use">frontier — report quality</div></div>
+    </div>
+    <p class="lead">Cost is a first-class signal: the Orchestrator <span class="accent">halts when spend accrues without producing signal</span>. Per-role model choice is deliberate — frontier models often refuse offensive work.</p>
+  </div></section>
+
+  <!-- 10 BUILD VS CONFIGURE -->
+  <section class="slide"><div class="wrap">
+    <div class="eyebrow">Build vs configure</div>
+    <h2>Configure the commodity. Build the judgment.</h2>
+    <div class="compare">
+      <div class="col cfg"><h3>CONFIGURE</h3><div class="s">seeds &amp; deterministic oracles</div>
+        <div class="li"><b>Garak</b><span>generic injection corpus</span></div>
+        <div class="li"><b>PyRIT</b><span>borrow mutators, not orchestration</span></div>
+        <div class="li"><b>ZAP</b><span>web / access-control fuzz</span></div>
+        <div class="li"><b>Semgrep</b><span>SAST for the ATO packet</span></div>
+      </div>
+      <div class="col bld"><h3>BUILD</h3><div class="s">where the graded value is</div>
+        <div class="li"><b>4 agents</b><span>clinical-context generation &amp; judging</span></div>
+        <div class="li"><b>Oracles</b><span>reuse Week 1/2 PHI + grounding logic</span></div>
+        <div class="li"><b>Harness</b><span>versioned exploit DB + live replay</span></div>
+        <div class="li"><b>Observability</b><span>coverage · trend · per-agent cost</span></div>
+      </div>
+    </div>
+  </div></section>
+
+  <!-- 11 OBSERVABILITY -->
+  <section class="slide"><div class="wrap">
+    <div class="eyebrow">Observability</div>
+    <h2>The substrate the Orchestrator reads.</h2>
+    <p class="lead">Not just for humans — it's the data the Orchestrator uses to decide what to hunt next.</p>
+    <div class="chips">
+      <span class="chip">cases per category</span>
+      <span class="chip">pass/fail by version</span>
+      <span class="chip">resilience trend</span>
+      <span class="chip">open findings</span>
+      <span class="chip">per-agent cost</span>
+      <span class="chip">agent-by-agent timeline</span>
+    </div>
+  </div></section>
+
+  <!-- 12 PROOF -->
+  <section class="slide"><div class="wrap">
+    <div class="eyebrow">Proof it's real</div>
+    <h2>Three findings already confirmed live.</h2>
+    <div class="grid g3">
+      <div class="card find"><div class="t" style="color:var(--text)">V1 · file read</div><div class="b">Arbitrary server file → streamed to the VLM &amp; attached to a chart.</div><div class="sev">HIGH · data_exfiltration</div></div>
+      <div class="card find"><div class="t" style="color:var(--text)">V2 · cross-patient</div><div class="b">Session path isn't launch-bound — any patient id.</div><div class="sev">HIGH · identity_role</div></div>
+      <div class="card find m"><div class="t" style="color:var(--text)">V5 · poisoning</div><div class="b">Extracted value re-enters later prompts, no provenance flag.</div><div class="sev">MED · state_corruption</div></div>
+    </div>
+    <p class="lead">The target is a live system, not a mock — the platform runs against the deployed URL.</p>
+  </div></section>
+
+  <!-- 13 STATUS -->
+  <section class="slide"><div class="wrap">
+    <div class="eyebrow">Where we are</div>
+    <h2>Docs-first. Code next.</h2>
+    <div class="chips">
+      <span class="chip"><span class="pill p-ok">done</span> threat model</span>
+      <span class="chip"><span class="pill p-ok">done</span> contracts v1</span>
+      <span class="chip"><span class="pill p-ok">done</span> evidence packet</span>
+      <span class="chip"><span class="pill p-ok">done</span> build-vs-configure</span>
+      <span class="chip"><span class="pill p-wait">pending</span> D1 language · D2 framework · D3 models</span>
+    </div>
+    <p class="lead">Next: the <span class="mono accent">target_client</span> (script the SMART launch → mint a token → smoke-test <span class="mono">/turn</span>), then one live agent role against the deployed target — the MVP gate.</p>
+  </div></section>
+
+  <!-- 14 CLOSE -->
+  <section class="slide"><div class="wrap">
+    <div class="eyebrow">The standard</div>
+    <h2>Defensible to a hospital CISO.</h2>
+    <p class="lead">Not the flashiest jailbreak in a demo — the platform they'd trust with continuous security testing of a system their physicians depend on.</p>
+    <div class="brand" style="margin-top:38px"><span class="g"></span><span class="w">Agent<b>Forge</b></span></div>
+  </div></section>
+
+</div>
+
+<div class="chrome">
+  <div class="id">Agent<b>Forge</b> · Architecture Defense</div>
+  <div class="prog"><i id="prog"></i></div>
+  <div class="count" id="count">1 / 14</div>
+  <div class="nav"><button id="prev" aria-label="Previous slide">‹</button><button id="next" aria-label="Next slide">›</button></div>
+</div>
+
+<script>
+(function(){
+  var slides=[].slice.call(document.querySelectorAll('.slide'));
+  var i=0, n=slides.length;
+  var count=document.getElementById('count'), prog=document.getElementById('prog');
+  function show(k){
+    i=Math.max(0,Math.min(n-1,k));
+    slides.forEach(function(s,j){s.classList.toggle('active',j===i);});
+    count.textContent=(i+1)+' / '+n;
+    prog.style.width=((i)/(n-1)*100)+'%';
+  }
+  function next(){show(i+1);} function prev(){show(i-1);}
+  document.getElementById('next').onclick=next;
+  document.getElementById('prev').onclick=prev;
+  document.addEventListener('keydown',function(e){
+    if(e.key==='ArrowRight'||e.key==='PageDown'||e.key===' '){e.preventDefault();next();}
+    else if(e.key==='ArrowLeft'||e.key==='PageUp'){e.preventDefault();prev();}
+    else if(e.key==='Home'){show(0);} else if(e.key==='End'){show(n-1);}
+    else if(e.key==='f'||e.key==='F'){ if(!document.fullscreenElement){document.documentElement.requestFullscreen&&document.documentElement.requestFullscreen();} else {document.exitFullscreen&&document.exitFullscreen();} }
+  });
+  // swipe
+  var sx=0;
+  document.addEventListener('touchstart',function(e){sx=e.touches[0].clientX;},{passive:true});
+  document.addEventListener('touchend',function(e){var dx=e.changedTouches[0].clientX-sx; if(Math.abs(dx)>50){dx<0?next():prev();}},{passive:true});
+  show(0);
+})();
+</script>
