@@ -11,11 +11,18 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime
-from typing import Literal
+from typing import Any, Literal
 
-from pydantic import Field
+from pydantic import Field, model_serializer
 
 from agentforge.contracts.common import AttackCategory, OwaspMapping, StrictModel
+
+# Optional, NON-nullable schema fields: when unset (None) the key must be ABSENT
+# from the JSON dump, never emitted as null (the schema types don't permit null).
+# Nullable fields (mutation_axis, parent_attack_id, last_regression_at, the
+# AuthorizedScope urls) are left as-is and keep an explicit null.
+_DIRECTIVE_ABSENT_WHEN_NONE = ("attack_subcategory", "coverage_context")
+_COVERAGE_ABSENT_WHEN_NONE = ("open_findings_in_category", "cases_tested_in_category")
 
 
 class AuthorizedScope(StrictModel):
@@ -43,6 +50,14 @@ class CoverageContext(StrictModel):
     cases_tested_in_category: int | None = Field(default=None, ge=0)
     last_regression_at: datetime | None = None
 
+    @model_serializer(mode="wrap")
+    def _serialize(self, handler: Any) -> dict[str, Any]:
+        data = handler(self)
+        for key in _COVERAGE_ABSENT_WHEN_NONE:
+            if data.get(key) is None:
+                data.pop(key, None)
+        return data
+
 
 class AttackDirective(StrictModel):
     """Edge (1) — Orchestrator -> Red Team: what to attack next."""
@@ -60,3 +75,11 @@ class AttackDirective(StrictModel):
     coverage_context: CoverageContext | None = None
     budget: Budget
     issued_at: datetime
+
+    @model_serializer(mode="wrap")
+    def _serialize(self, handler: Any) -> dict[str, Any]:
+        data = handler(self)
+        for key in _DIRECTIVE_ABSENT_WHEN_NONE:
+            if data.get(key) is None:
+                data.pop(key, None)
+        return data

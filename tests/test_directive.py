@@ -37,6 +37,17 @@ def test_attack_directive_minimal_roundtrips_against_schema(validate):
     validate(DIRECTIVE, dumped)
 
 
+def test_attack_directive_omits_optional_nonnullable_fields_when_unset(validate):
+    # Regression: unset attack_subcategory / coverage_context must be ABSENT from a
+    # PLAIN dump (not null), so any consumer (e.g. the Orchestrator) can validate
+    # without knowing to exclude them. The model_serializer handles this now.
+    directive = AttackDirective(**_minimal_kwargs())
+    dumped = directive.model_dump(mode="json")
+    assert "attack_subcategory" not in dumped
+    assert "coverage_context" not in dumped
+    validate(DIRECTIVE, dumped)
+
+
 def test_attack_directive_full_roundtrips_against_schema(validate):
     kwargs = _minimal_kwargs()
     kwargs.update(
