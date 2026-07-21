@@ -3,11 +3,11 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>AgentForge · Mission Control</title>
+<title>AgentForge · Operator Console</title>
 <style>
   :root{
-    --bg:#0a0e14; --panel:#0f151d; --panel2:#131c26; --line:#1c2732; --line2:#2a3947;
-    --text:#dbe4ef; --muted:#8595a7; --dim:#576372;
+    --bg:#0a0e14; --panel:#0f151d; --panel2:#131c26; --line:#1b2530; --line2:#293745;
+    --text:#e2e9f2; --muted:#8090a2; --dim:#586576;
     --accent:#5eead4; --accent-dim:#2b6f66;
     --breach:#ff5d5d; --partial:#ffb84d; --held:#43d392; --info:#63a4ff;
     --crit:#ff5d5d; --high:#ff9a4d; --med:#ffd34d; --low:#7f8ea3;
@@ -15,392 +15,280 @@
     --sans:-apple-system,system-ui,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
   }
   *,*::before,*::after{box-sizing:border-box}
-  :where(.grid,.stats,.cov,.pipe)>*{min-width:0}
+  :where(.kpis,.main)>*{min-width:0}
   html,body{margin:0}
-  body{background:
-      radial-gradient(1100px 500px at 85% -10%,rgba(94,234,212,.05),transparent 60%),
-      radial-gradient(900px 600px at 0% 110%,rgba(255,93,93,.04),transparent 55%),
-      var(--bg);
-    color:var(--text);font-family:var(--sans);font-size:14px;line-height:1.5;
-    -webkit-font-smoothing:antialiased}
+  body{background:var(--bg);color:var(--text);font-family:var(--sans);font-size:14px;line-height:1.55;-webkit-font-smoothing:antialiased}
   .mono{font-family:var(--mono)}
-  a{color:var(--accent);text-decoration:none}
 
-  /* ---- top bar ---- */
-  .top{position:sticky;top:0;z-index:20;background:rgba(10,14,20,.82);backdrop-filter:blur(9px);
-    border-bottom:1px solid var(--line);padding:12px 20px;display:flex;align-items:center;gap:18px;flex-wrap:wrap}
-  .brand{display:flex;align-items:center;gap:10px;font-weight:700;letter-spacing:.01em}
-  .brand .mk{width:15px;height:15px;border:2.5px solid var(--accent);border-radius:3px;transform:rotate(45deg);
-    box-shadow:0 0 14px rgba(94,234,212,.55)}
+  .top{border-bottom:1px solid var(--line);padding:16px 28px;display:flex;align-items:center;gap:18px;flex-wrap:wrap}
+  .brand{display:flex;align-items:center;gap:11px;font-weight:700;font-size:15px}
+  .brand .mk{width:15px;height:15px;border:2.5px solid var(--accent);border-radius:3px;transform:rotate(45deg);box-shadow:0 0 12px rgba(94,234,212,.5)}
   .brand b{color:var(--accent)}
-  .top .eyebrow{font-family:var(--mono);font-size:10.5px;letter-spacing:.24em;text-transform:uppercase;color:var(--muted)}
-  .top .target{font-family:var(--mono);font-size:11.5px;color:var(--muted);margin-left:auto;display:flex;align-items:center;gap:8px}
-  .badge-replay{font-family:var(--mono);font-size:10px;letter-spacing:.14em;text-transform:uppercase;font-weight:700;
-    color:#0a0e14;background:var(--accent);padding:3px 8px;border-radius:5px}
-  .dot-live{width:7px;height:7px;border-radius:50%;background:var(--breach);box-shadow:0 0 8px var(--breach);animation:pulse 1.3s infinite}
-  @keyframes pulse{0%,100%{opacity:1}50%{opacity:.35}}
+  .hmeta{border-left:1px solid var(--line);padding-left:18px}
+  .hmeta .l1{font-size:13px;font-weight:600}
+  .hmeta .l2{font-family:var(--mono);font-size:11px;color:var(--muted)}
+  .status-ind{margin-left:auto;display:flex;align-items:center;gap:9px;font-family:var(--mono);font-size:11px;color:var(--muted)}
+  .dot{width:8px;height:8px;border-radius:50%;background:var(--dim)}
+  .dot.running{background:var(--breach);box-shadow:0 0 9px var(--breach);animation:pulse 1.2s infinite}
+  .dot.done{background:var(--held)} .dot.stopped{background:var(--partial)}
+  @keyframes pulse{0%,100%{opacity:1}50%{opacity:.3}}
 
-  .wrap{max-width:1360px;margin:0 auto;padding:18px 20px 60px}
+  .wrap{max-width:1280px;margin:0 auto;padding:26px 28px 60px}
 
-  /* ---- stat strip ---- */
-  .stats{display:grid;grid-template-columns:repeat(6,1fr);gap:10px;margin-bottom:16px}
-  @media(max-width:900px){.stats{grid-template-columns:repeat(3,1fr)}}
-  @media(max-width:560px){.stats{grid-template-columns:repeat(2,1fr)}}
-  .stat{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:12px 14px}
-  .stat .n{font-family:var(--mono);font-size:24px;font-weight:700;line-height:1}
-  .stat .l{font-size:10.5px;color:var(--muted);margin-top:6px;text-transform:uppercase;letter-spacing:.09em}
-  .stat.breach .n{color:var(--breach)} .stat.held .n{color:var(--held)} .stat.partial .n{color:var(--partial)}
-  .stat.cost .n{color:var(--accent)}
+  /* control bar */
+  .control{border:1px solid var(--line);border-radius:12px;background:var(--panel);padding:18px 20px;margin-bottom:26px}
+  .control .r1{display:flex;gap:12px;align-items:center;flex-wrap:wrap}
+  .tokin{flex:1;min-width:260px;font-family:var(--mono);font-size:12px;color:var(--text);background:var(--bg);
+    border:1px solid var(--line2);border-radius:8px;padding:10px 13px}
+  .tokin::placeholder{color:var(--dim)}
+  .tokin:focus{outline:none;border-color:var(--accent)}
+  .go{font-family:var(--sans);font-size:13px;font-weight:600;color:#06110d;background:var(--accent);border:none;
+    border-radius:8px;padding:10px 20px;cursor:pointer;transition:.15s}
+  .go:hover{filter:brightness(1.08)} .go:disabled{opacity:.4;cursor:not-allowed;filter:none}
+  .stop{font-family:var(--sans);font-size:13px;font-weight:600;color:var(--breach);background:transparent;
+    border:1px solid rgba(255,93,93,.5);border-radius:8px;padding:10px 18px;cursor:pointer}
+  .stop:disabled{opacity:.35;cursor:not-allowed}
+  .chips{display:flex;gap:8px;flex-wrap:wrap;margin-top:14px}
+  .chip{font-family:var(--mono);font-size:11px;color:var(--muted);border:1px solid var(--line2);border-radius:20px;
+    padding:5px 12px;cursor:pointer;user-select:none;transition:.12s}
+  .chip.on{color:var(--accent);border-color:var(--accent);background:rgba(94,234,212,.08)}
+  .msg{margin-top:12px;font-family:var(--mono);font-size:11.5px;min-height:16px}
+  .msg.err{color:var(--breach)} .msg.info{color:var(--muted)}
+  .hint{font-family:var(--mono);font-size:10.5px;color:var(--dim);margin-top:10px}
 
-  /* ---- layout grid ---- */
-  .grid{display:grid;grid-template-columns:1.55fr 1fr;gap:16px}
-  @media(max-width:940px){.grid{grid-template-columns:1fr}}
-  .panel{background:var(--panel);border:1px solid var(--line);border-radius:12px;overflow:hidden}
-  .panel h2{margin:0;padding:12px 16px;font-size:11px;letter-spacing:.16em;text-transform:uppercase;color:var(--muted);
-    border-bottom:1px solid var(--line);display:flex;align-items:center;gap:9px;font-weight:600}
-  .panel h2 .c{margin-left:auto;font-family:var(--mono);font-size:11px;color:var(--dim)}
-  .col{display:flex;flex-direction:column;gap:16px}
+  .kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:20px;margin-bottom:28px}
+  @media(max-width:640px){.kpis{grid-template-columns:repeat(2,1fr);gap:14px}}
+  .kpi .n{font-family:var(--mono);font-size:32px;font-weight:700;line-height:1}
+  .kpi .l{font-size:11px;color:var(--muted);margin-top:7px;text-transform:uppercase;letter-spacing:.11em}
+  .kpi.breach .n{color:var(--breach)} .kpi.spend .n{color:var(--accent)}
+  .kpi .n .u{color:var(--dim);font-size:17px;font-weight:600}
 
-  /* ---- attempt feed (hero) ---- */
-  .feedwrap{max-height:560px;overflow-y:auto;padding:6px 0}
-  .feedwrap::-webkit-scrollbar{width:8px}.feedwrap::-webkit-scrollbar-thumb{background:var(--line2);border-radius:8px}
-  .row{display:grid;grid-template-columns:34px 1fr auto;gap:12px;align-items:center;padding:10px 16px;
-    border-bottom:1px solid rgba(28,39,50,.6);font-family:var(--mono);animation:slidein .34s ease}
-  @keyframes slidein{from{opacity:0;transform:translateY(-6px);background:rgba(94,234,212,.06)}to{opacity:1}}
-  .row .seq{color:var(--dim);font-size:11px}
-  .row .mid .cat{font-size:12.5px;color:var(--text)}
-  .row .mid .sub{font-size:11px;color:var(--muted)}
-  .row .mid .route{font-size:10.5px;color:var(--dim);margin-top:2px}
-  .row .path{display:flex;gap:4px;margin-top:5px;align-items:center;flex-wrap:wrap}
-  .hop{font-size:9px;letter-spacing:.06em;text-transform:uppercase;color:var(--dim);border:1px solid var(--line2);
-    border-radius:4px;padding:1px 5px}
-  .hop.judge{color:var(--info);border-color:rgba(99,164,255,.4)}
-  .hop.red_team{color:var(--partial);border-color:rgba(255,184,77,.4)}
-  .arrow{color:var(--dim);font-size:9px}
-  .right{text-align:right;display:flex;flex-direction:column;align-items:flex-end;gap:5px}
-  .http{font-size:11px;color:var(--muted)}
-  .pill{font-size:10px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;padding:3px 9px;border-radius:20px;white-space:nowrap}
-  .pill.success{color:var(--breach);background:rgba(255,93,93,.13);border:1px solid rgba(255,93,93,.4)}
-  .pill.partial{color:var(--partial);background:rgba(255,184,77,.12);border:1px solid rgba(255,184,77,.38)}
-  .pill.fail{color:var(--held);background:rgba(67,211,146,.11);border:1px solid rgba(67,211,146,.34)}
-  .predicate{font-size:10px;color:var(--breach);max-width:280px;text-align:right;line-height:1.35}
-  .row.brk{background:linear-gradient(90deg,rgba(255,93,93,.07),transparent 70%)}
+  .main{display:grid;grid-template-columns:1.7fr 1fr;gap:30px;align-items:start}
+  @media(max-width:900px){.main{grid-template-columns:1fr;gap:24px}}
+  .lab{font-size:11px;letter-spacing:.15em;text-transform:uppercase;color:var(--dim);margin-bottom:14px;display:flex;gap:10px}
+  .lab .c{margin-left:auto;font-family:var(--mono);color:var(--muted)}
 
-  /* ---- coverage grid ---- */
-  .cov{display:flex;flex-direction:column;gap:2px;padding:8px 0}
-  .covrow{display:grid;grid-template-columns:1fr auto;gap:10px;align-items:center;padding:8px 16px}
-  .covrow .name{font-size:11.5px;font-family:var(--mono)}
-  .covrow .bar{grid-column:1/-1;height:6px;border-radius:4px;background:var(--panel2);display:flex;overflow:hidden;margin-top:6px}
-  .covrow .bar i{display:block;height:100%;transition:width .5s ease}
-  .bar .s{background:var(--breach)} .bar .p{background:var(--partial)} .bar .f{background:var(--held)}
-  .covrow .cnt{font-family:var(--mono);font-size:11px;color:var(--muted)}
-  .covrow .cnt b{color:var(--text)}
+  .feed{min-height:120px}
+  .row{display:grid;grid-template-columns:26px 1fr auto;gap:16px;align-items:baseline;padding:15px 4px;border-bottom:1px solid var(--line);animation:in .3s ease}
+  @keyframes in{from{opacity:0;transform:translateY(-4px)}to{opacity:1}}
+  .row .seq{font-family:var(--mono);font-size:11px;color:var(--dim)}
+  .row .cat{font-size:14.5px}.row .sub{color:var(--muted);font-size:12.5px}
+  .row .route{font-family:var(--mono);font-size:11px;color:var(--dim);margin-top:3px}
+  .row .pred{font-family:var(--mono);font-size:11px;color:var(--breach);margin-top:5px;line-height:1.4}
+  .row .r{text-align:right;white-space:nowrap}
+  .row .http{font-family:var(--mono);font-size:11px;color:var(--muted);margin-right:12px}
+  .pill{font-family:var(--mono);font-size:10.5px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;padding:3px 10px;border-radius:20px}
+  .pill.success{color:var(--breach);background:rgba(255,93,93,.12)}
+  .pill.partial{color:var(--partial);background:rgba(255,184,77,.12)}
+  .pill.fail{color:var(--held);background:rgba(67,211,146,.11)}
+  .pill.running{color:var(--info);background:rgba(99,164,255,.12)}
+  .empty{color:var(--dim);font-size:13px;padding:26px 4px;font-family:var(--mono);line-height:1.7}
 
-  /* ---- verdict bands + cost ---- */
-  .body{padding:14px 16px}
-  .bands{display:flex;height:12px;border-radius:6px;overflow:hidden;background:var(--panel2);margin:4px 0 12px}
-  .bands i{display:block;height:100%;transition:width .5s ease}
-  .legend{display:flex;gap:14px;font-family:var(--mono);font-size:11px;color:var(--muted);flex-wrap:wrap}
-  .legend span{display:inline-flex;align-items:center;gap:6px}
-  .legend .sw{width:9px;height:9px;border-radius:2px}
-  .meter{height:10px;border-radius:6px;background:var(--panel2);overflow:hidden;margin:10px 0 6px}
-  .meter i{display:block;height:100%;background:linear-gradient(90deg,var(--accent-dim),var(--accent));transition:width .5s ease}
-  .meta{display:flex;justify-content:space-between;font-family:var(--mono);font-size:11px;color:var(--muted)}
+  .card{border:1px solid var(--line);border-radius:12px;padding:20px;background:var(--panel)}
+  .card + .card{margin-top:16px}
+  .card h3{margin:0 0 14px;font-size:11px;letter-spacing:.13em;text-transform:uppercase;color:var(--muted);font-weight:600}
+  .vbar{display:flex;height:10px;border-radius:5px;overflow:hidden;background:var(--panel2)}
+  .vbar i{display:block;height:100%;transition:width .4s}
+  .vlegend{display:flex;justify-content:space-between;margin-top:12px;font-family:var(--mono);font-size:12px}
+  .vlegend b{display:block;font-size:17px}
+  .vlegend .breach b{color:var(--breach)}.vlegend .partial b{color:var(--partial)}.vlegend .held b{color:var(--held)}
+  .vlegend span span{color:var(--dim);font-size:10px;text-transform:uppercase;letter-spacing:.08em}
+  .covrow{display:flex;align-items:center;gap:12px;padding:7px 0}
+  .covrow .nm{font-family:var(--mono);font-size:11.5px;width:120px;flex:none;color:var(--muted)}
+  .covrow .track{flex:1;height:5px;border-radius:3px;background:var(--panel2);display:flex;overflow:hidden}
+  .track i{height:100%;transition:width .4s}.track .s{background:var(--breach)}.track .p{background:var(--partial)}.track .f{background:var(--held)}
+  .covrow .n{font-family:var(--mono);font-size:11px;color:var(--dim);width:14px;text-align:right}
+  .costline{display:flex;justify-content:space-between;font-family:var(--mono);font-size:13px;margin-bottom:9px}
+  .costline b{color:var(--accent)}
+  .meter{height:8px;border-radius:5px;background:var(--panel2);overflow:hidden}
+  .meter i{display:block;height:100%;background:linear-gradient(90deg,var(--accent-dim),var(--accent));transition:.4s}
 
-  /* ---- pipeline ---- */
-  .pipe{display:flex;align-items:stretch;gap:0;padding:14px 16px;flex-wrap:wrap}
-  .node{flex:1;min-width:120px;border:1px solid var(--line2);border-radius:9px;padding:10px 12px;position:relative;transition:.25s}
-  .node.det{border-color:rgba(99,164,255,.35)} .node.ai{border-color:rgba(255,184,77,.35)}
-  .node.active{box-shadow:0 0 0 1px var(--accent),0 0 18px rgba(94,234,212,.25);transform:translateY(-2px)}
-  .node .r{font-size:9px;letter-spacing:.1em;text-transform:uppercase;color:var(--dim)}
-  .node .nm{font-size:12.5px;font-weight:600;margin-top:2px}
-  .node.det .nm{color:var(--info)} .node.ai .nm{color:var(--partial)}
-  .node .md{font-family:var(--mono);font-size:9.5px;color:var(--muted);margin-top:3px}
-  .pipe .sep{align-self:center;color:var(--dim);padding:0 7px;font-size:12px}
-  .boundary{font-family:var(--mono);font-size:9.5px;color:var(--breach);border:1px dashed rgba(255,93,93,.4);
-    border-radius:5px;padding:2px 7px;align-self:center;margin:0 4px;white-space:nowrap}
-
-  /* ---- findings ---- */
-  .ftable{width:100%;border-collapse:collapse;font-size:12px}
-  .ftable th{text-align:left;font-family:var(--mono);font-size:10px;letter-spacing:.08em;text-transform:uppercase;
-    color:var(--dim);padding:8px 16px;border-bottom:1px solid var(--line);font-weight:600}
-  .ftable td{padding:10px 16px;border-bottom:1px solid rgba(28,39,50,.55);vertical-align:top}
-  .ftable tr:last-child td{border-bottom:none}
-  .sev{font-family:var(--mono);font-size:10px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;padding:2px 7px;border-radius:5px}
-  .sev.critical{color:var(--crit);background:rgba(255,93,93,.14)} .sev.high{color:var(--high);background:rgba(255,154,77,.13)}
-  .sev.medium{color:var(--med);background:rgba(255,211,77,.12)} .sev.low{color:var(--low);background:rgba(127,142,163,.14)}
-  .fid{font-family:var(--mono);font-size:11px;color:var(--accent)}
-  .status{font-family:var(--mono);font-size:10.5px}
-  .status.awaiting_human_approval{color:var(--partial)} .status.open{color:var(--muted)} .status.resolved{color:var(--held)}
-  .gate{display:inline-flex;align-items:center;gap:6px;font-family:var(--mono);font-size:10px;color:var(--partial);
-    border:1px solid rgba(255,184,77,.4);border-radius:5px;padding:2px 7px}
-  .fsum{color:var(--muted);font-size:11.5px;margin-top:3px;max-width:520px}
-
-  /* ---- controls + sparkline ---- */
-  .controls{display:flex;align-items:center;gap:8px}
-  .btn{font-family:var(--mono);font-size:11px;color:var(--text);background:var(--panel2);border:1px solid var(--line2);
-    border-radius:6px;padding:5px 11px;cursor:pointer;transition:.15s}
-  .btn:hover{border-color:var(--accent);color:var(--accent)}
-  .spark{display:flex;align-items:flex-end;gap:0;height:44px;padding:6px 16px 12px}
-  .foot{margin-top:26px;text-align:center;font-family:var(--mono);font-size:10.5px;color:var(--dim)}
-  .phi{color:var(--held)}
+  .tabs{margin-top:34px}
+  .tabbar{display:flex;border-bottom:1px solid var(--line);margin-bottom:20px}
+  .tab{font-size:12.5px;color:var(--muted);background:none;border:none;border-bottom:2px solid transparent;padding:10px 16px;cursor:pointer}
+  .tab.on{color:var(--text);border-color:var(--accent)}
+  .tab .badge{font-family:var(--mono);font-size:10px;color:var(--partial);margin-left:6px}
+  .tabpane{display:none}.tabpane.on{display:block}
+  .find{display:grid;grid-template-columns:auto 1fr auto;gap:18px;align-items:start;padding:16px 2px;border-bottom:1px solid var(--line)}
+  .find .fid{font-family:var(--mono);font-size:12px;color:var(--accent)}
+  .find .fsum{color:var(--muted);font-size:12.5px;margin-top:4px}
+  .find .fcat{font-family:var(--mono);font-size:11px;color:var(--dim);margin-top:5px}
+  .sev{font-family:var(--mono);font-size:10px;font-weight:700;text-transform:uppercase;padding:2px 8px;border-radius:5px}
+  .sev.critical{color:var(--crit);background:rgba(255,93,93,.14)}.sev.high{color:var(--high);background:rgba(255,154,77,.13)}
+  .sev.medium{color:var(--med);background:rgba(255,211,77,.12)}.sev.low{color:var(--low);background:rgba(127,142,163,.14)}
+  .gate{font-family:var(--mono);font-size:10.5px;color:var(--partial);border:1px solid rgba(255,184,77,.4);border-radius:5px;padding:3px 9px;white-space:nowrap}
+  .pipe{display:flex;flex-wrap:wrap;align-items:stretch}
+  .node{flex:1;min-width:150px;border:1px solid var(--line2);border-radius:9px;padding:14px 16px}
+  .node.det{border-color:rgba(99,164,255,.3)}.node.ai{border-color:rgba(255,184,77,.3)}
+  .node .r{font-size:9px;letter-spacing:.11em;text-transform:uppercase;color:var(--dim)}
+  .node .nm{font-size:13px;font-weight:600;margin-top:3px}.node.det .nm{color:var(--info)}.node.ai .nm{color:var(--partial)}
+  .node .md{font-family:var(--mono);font-size:10px;color:var(--muted);margin-top:4px}
+  .sep{align-self:center;color:var(--dim);padding:0 10px}
+  .bound{align-self:center;font-family:var(--mono);font-size:10px;color:var(--breach);border:1px dashed rgba(255,93,93,.4);border-radius:5px;padding:3px 9px;margin:0 6px}
+  .note{color:var(--muted);font-size:12.5px;margin-top:18px;max-width:70ch;line-height:1.6}
+  .foot{margin-top:40px;padding-top:20px;border-top:1px solid var(--line);font-family:var(--mono);font-size:11px;color:var(--dim)}
+  .foot .phi{color:var(--held)}
 </style>
 </head>
 <body>
 
 <div class="top">
   <div class="brand"><span class="mk"></span> Agent<b>Forge</b></div>
-  <div>
-    <div class="eyebrow">Mission Control</div>
-    <div id="camplabel" style="font-size:13px;margin-top:1px">loading…</div>
+  <div class="hmeta">
+    <div class="l1">Operator Console</div>
+    <div class="l2" id="target">—</div>
   </div>
-  <div class="controls" style="margin-left:24px">
-    <button class="btn" id="btnPlay">⏸ pause</button>
-    <button class="btn" id="btnRestart">↺ restart</button>
-    <button class="btn" id="btnSpeed">2×</button>
-  </div>
-  <div class="target">
-    <span class="badge-replay" id="modeBadge">replay</span>
-    <span class="dot-live"></span>
-    <span id="target">—</span>
-  </div>
+  <div class="status-ind"><span class="dot" id="dot"></span><span id="statustext">idle</span></div>
 </div>
 
 <div class="wrap">
 
-  <div class="stats" id="stats"></div>
-
-  <div class="grid">
-    <!-- HERO: live attempt feed -->
-    <div class="panel">
-      <h2>⚔ Live attempt feed <span class="c" id="feedcount">0 / 0</span></h2>
-      <div class="feedwrap" id="feed"></div>
+  <!-- OPERATOR CONTROL -->
+  <div class="control">
+    <div class="r1">
+      <input class="tokin" id="token" type="password" placeholder="launch-bound token (from a Co-Pilot chart launch)">
+      <button class="go" id="start">▶ Start campaign</button>
+      <button class="stop" id="stop" disabled>■ Stop</button>
     </div>
+    <div class="chips" id="chips"></div>
+    <div class="msg info" id="msg"></div>
+    <div class="hint">The token gates every attack — no valid launch-bound token, no requests fire. Real Kimi K2.6 generates each attack live · demo data only.</div>
+  </div>
 
-    <div class="col">
-      <div class="panel">
-        <h2>◎ Coverage · 6 categories <span class="c" id="covcount"></span></h2>
-        <div class="cov" id="cov"></div>
-      </div>
-      <div class="panel">
-        <h2>⚖ Verdict bands</h2>
-        <div class="body">
-          <div class="bands" id="bands"></div>
-          <div class="legend">
-            <span><i class="sw" style="background:var(--breach)"></i> breach (success)</span>
-            <span><i class="sw" style="background:var(--partial)"></i> partial</span>
-            <span><i class="sw" style="background:var(--held)"></i> defense held</span>
-          </div>
+  <div class="kpis" id="kpis"></div>
+
+  <div class="main">
+    <div>
+      <div class="lab">Live attempt feed <span class="c" id="feedc"></span></div>
+      <div class="feed" id="feed"></div>
+    </div>
+    <div>
+      <div class="lab">Campaign status</div>
+      <div class="card">
+        <h3>Verdicts</h3>
+        <div class="vbar" id="vbar"></div>
+        <div class="vlegend">
+          <span class="breach"><b id="v-s">0</b><span>breach</span></span>
+          <span class="partial"><b id="v-p">0</b><span>partial</span></span>
+          <span class="held"><b id="v-f">0</b><span>held</span></span>
         </div>
       </div>
-      <div class="panel">
-        <h2>▤ Cost vs budget · orchestrator halt line</h2>
-        <div class="body">
-          <div class="meter"><i id="costbar" style="width:0%"></i></div>
-          <div class="meta"><span id="costnow">$0.000</span><span id="costbudget">/ $0</span></div>
-        </div>
+      <div class="card"><h3>Coverage · 6 categories</h3><div id="cov"></div></div>
+      <div class="card">
+        <h3>Cost · orchestrator halt line</h3>
+        <div class="costline"><b id="costnow">$0.000</b><span>/ $5.00 budget</span></div>
+        <div class="meter"><i id="costbar" style="width:0"></i></div>
       </div>
     </div>
   </div>
 
-  <!-- agent pipeline -->
-  <div class="panel" style="margin-top:16px">
-    <h2>◇ Agent pipeline · Red Team ⟂ Judge enforced by shape</h2>
-    <div class="pipe" id="pipe"></div>
-  </div>
-
-  <div class="grid" style="margin-top:16px">
-    <!-- findings -->
-    <div class="panel">
-      <h2>⚑ Findings register · human gate on critical <span class="c" id="findcount"></span></h2>
-      <table class="ftable"><thead><tr><th>ID</th><th>Category</th><th>Sev</th><th>Status</th></tr></thead>
-      <tbody id="findings"></tbody></table>
+  <div class="tabs">
+    <div class="tabbar">
+      <button class="tab on" data-t="findings">Findings <span class="badge" id="gatebadge"></span></button>
+      <button class="tab" data-t="agents">Agents</button>
     </div>
-    <!-- resilience trend -->
-    <div class="panel">
-      <h2>↗ Resilience trend · breaches per target version</h2>
-      <div class="spark" id="spark"></div>
-      <div class="body" style="padding-top:0">
-        <div class="meta"><span id="trendold">—</span><span id="trendnew">—</span></div>
-      </div>
+    <div class="tabpane on" id="pane-findings"><div id="findings"><div class="empty">No confirmed breaches yet.</div></div></div>
+    <div class="tabpane" id="pane-agents">
+      <div class="pipe" id="pipe"></div>
+      <div class="note">The single most important boundary is <b style="color:var(--breach)">Red Team ⟂ Judge</b>, enforced by shape: different processes, different providers (Moonshot vs Anthropic), no shared context. The attacker gets no channel to influence a verdict.</div>
     </div>
   </div>
 
-  <div class="foot">
-    AgentForge Console · read-only replay · <span class="phi">PHI-free</span> — ids · category · HTTP status · verdict band · oracle predicate only, never raw response bytes
-  </div>
+  <div class="foot">AgentForge Operator Console · <span class="phi">PHI-free</span> — ids · category · HTTP status · verdict band · oracle predicate · cost only, never raw response bytes</div>
 </div>
 
 <script>
-const CAT_LABEL = {
-  prompt_injection:"prompt injection", data_exfiltration:"data exfiltration",
-  state_corruption:"state corruption", tool_misuse:"tool misuse",
-  denial_of_service:"denial of service", identity_role_exploitation:"identity / role"
-};
-const AGENTS = [
-  {key:"orchestrator", role:"coordination", nm:"Orchestrator", md:"deterministic", cls:"det"},
-  {key:"red_team", role:"offensive", nm:"Red Team", md:"Kimi K2.6", cls:"ai"},
-  {key:"target", role:"target", nm:"Clinical Co-Pilot", md:"live HTTP", cls:"det"},
-  {key:"judge", role:"adjudication", nm:"Judge", md:"oracles + Sonnet 5", cls:"det"},
-  {key:"documentation", role:"reporting", nm:"Documentation", md:"Opus 4.8 + human", cls:"ai"},
-];
-const $ = s => document.querySelector(s);
-const el = (t,c,h) => { const e=document.createElement(t); if(c)e.className=c; if(h!=null)e.innerHTML=h; return e; };
+const CAT={prompt_injection:"Prompt injection",data_exfiltration:"Data exfiltration",state_corruption:"State corruption",tool_misuse:"Tool misuse",denial_of_service:"Denial of service",identity_role_exploitation:"Identity / role"};
+const CATS=["prompt_injection","data_exfiltration","state_corruption","tool_misuse","denial_of_service","identity_role_exploitation"];
+const AGENTS=[{k:"orchestrator",r:"coordination",nm:"Orchestrator",md:"deterministic",c:"det"},{k:"red_team",r:"offensive",nm:"Red Team",md:"Kimi K2.6",c:"ai"},{k:"target",r:"target",nm:"Clinical Co-Pilot",md:"live HTTP",c:"det"},{k:"judge",r:"adjudication",nm:"Judge",md:"deterministic",c:"det"},{k:"documentation",r:"reporting",nm:"Documentation",md:"Opus 4.8 + human",c:"ai"}];
+const $=s=>document.querySelector(s), el=(t,c,h)=>{const e=document.createElement(t);if(c)e.className=c;if(h!=null)e.innerHTML=h;return e;};
+const BUDGET=5.0;
+let running=false, selected=new Set(CATS);
+const live={seen:0,total:0,cost:0,b:{success:0,partial:0,fail:0},cov:{},findings:[]};
 
-let campaign, coverage, summary, findings;
-let timer=null, idx=0, speed=2, playing=true;
+function initChips(){const c=$("#chips");CATS.forEach(k=>{const ch=el("span","chip on",CAT[k]);ch.onclick=()=>{if(running)return;ch.classList.toggle("on");ch.classList.contains("on")?selected.add(k):selected.delete(k);};c.appendChild(ch);});}
+function initStatic(){
+  const p=$("#pipe");AGENTS.forEach((a,i)=>{p.appendChild(el("div","node "+a.c,`<div class="r">${a.r}</div><div class="nm">${a.nm}</div><div class="md">${a.md}</div>`));if(a.k==="red_team")p.appendChild(el("span","bound","⟂"));else if(i<AGENTS.length-1)p.appendChild(el("span","sep","→"));});
+  const cov=$("#cov");CATS.forEach(k=>cov.appendChild(el("div","covrow",`<span class="nm">${CAT[k]}</span><span class="track" id="tk-${k}"><i class="s" style="width:0"></i><i class="p" style="width:0"></i><i class="f" style="width:0"></i></span><span class="n" id="cn-${k}">0</span>`)));
+  resetLive(); paint();
+  $("#feed").innerHTML=`<div class="empty">Idle. Paste a launch-bound token, choose categories, and press <b style="color:var(--accent)">Start</b> to launch a live campaign against the Clinical Co-Pilot.</div>`;
+}
+function resetLive(){live.seen=0;live.total=0;live.cost=0;live.b={success:0,partial:0,fail:0};live.cov={};live.findings=[];CATS.forEach(k=>live.cov[k]={a:0,success:0,partial:0,fail:0});$("#feed").innerHTML="";$("#findings").innerHTML=`<div class="empty">No confirmed breaches yet.</div>`;$("#gatebadge").textContent="";}
+function kpis(){$("#kpis").innerHTML=
+  `<div class="kpi"><div class="n">${live.seen}${live.total?`<span class="u">/${live.total}</span>`:""}</div><div class="l">attempts</div></div>
+   <div class="kpi breach"><div class="n">${live.b.success}</div><div class="l">breaches</div></div>
+   <div class="kpi"><div class="n">${new Set(Object.keys(live.cov).filter(k=>live.cov[k].a)).size}<span class="u">/6</span></div><div class="l">coverage</div></div>
+   <div class="kpi spend"><div class="n">$${live.cost.toFixed(3)}</div><div class="l">spend</div></div>`;}
+function paint(){
+  kpis();$("#feedc").textContent=live.total?`${live.seen} / ${live.total}`:"";
+  const t=Math.max(live.seen,1),b=live.b;
+  $("#vbar").innerHTML=`<i style="width:${b.success/t*100}%;background:var(--breach)"></i><i style="width:${b.partial/t*100}%;background:var(--partial)"></i><i style="width:${b.fail/t*100}%;background:var(--held)"></i>`;
+  $("#v-s").textContent=b.success;$("#v-p").textContent=b.partial;$("#v-f").textContent=b.fail;
+  CATS.forEach(k=>{const v=live.cov[k],tt=Math.max(v.a,1),tk=$("#tk-"+k);tk.children[0].style.width=v.success/tt*100+"%";tk.children[1].style.width=v.partial/tt*100+"%";tk.children[2].style.width=v.fail/tt*100+"%";$("#cn-"+k).textContent=v.a;});
+  $("#costbar").style.width=Math.min(100,live.cost/BUDGET*100)+"%";$("#costnow").textContent="$"+live.cost.toFixed(3);
+}
+function addRow(a){const row=el("div","row");row.innerHTML=`<span class="seq">${String(a.seq).padStart(2,"0")}</span>
+  <div><span class="cat">${CAT[a.category]||a.category}</span> <span class="sub">${a.subcategory}</span><div class="route">${a.route}</div>${a.predicate?`<div class="pred">${a.predicate}</div>`:""}</div>
+  <div class="r"><span class="http">HTTP ${a.http_status}</span><span class="pill ${a.verdict}">${a.verdict==="fail"?"held":a.verdict}</span></div>`;
+  const f=$("#feed");f.insertBefore(row,f.firstChild);}
+function onAttempt(a){
+  live.seen++;live.cost+=a.cost_usd||0;if(a.verdict in live.b)live.b[a.verdict]++;
+  const cv=live.cov[a.category];if(cv){cv.a++;if(a.verdict in cv)cv[a.verdict]++;}
+  addRow(a);
+  if(a.verdict==="success"){renderFinding(a);}
+  paint();
+}
+function renderFinding(a){
+  if(live.findings.length===0)$("#findings").innerHTML="";
+  live.findings.push(a);
+  const gated=a.severity==="critical";
+  $("#findings").appendChild(el("div","find",
+    `<span class="sev ${a.severity}">${a.severity}</span>
+     <div><span class="fid">AF-LIVE-${String(a.seq).padStart(3,"0")}</span><div class="fsum">${a.predicate||""}</div><div class="fcat">${CAT[a.category]} · ${a.owasp||""}</div></div>
+     ${gated?'<span class="gate">⏸ awaiting approval</span>':'<span class="fcat">open</span>'}`));
+  const g=live.findings.filter(x=>x.severity==="critical").length;
+  $("#gatebadge").textContent=g?("· "+g+" gated"):"";
+}
+function setStatus(s,cls){$("#statustext").textContent=s;$("#dot").className="dot "+(cls||"");}
+function setRunning(on){running=on;$("#start").disabled=on;$("#stop").disabled=!on;document.querySelectorAll(".chip").forEach(c=>c.style.opacity=on?.5:1);}
+function msg(t,cls){$("#msg").className="msg "+(cls||"info");$("#msg").textContent=t||"";}
 
-async function boot(){
-  [campaign, coverage, summary, findings] = await Promise.all([
-    fetch("/api/campaign").then(r=>r.json()),
-    fetch("/api/coverage").then(r=>r.json()),
-    fetch("/api/summary").then(r=>r.json()),
-    fetch("/api/findings").then(r=>r.json()),
-  ]);
-  $("#camplabel").textContent = summary.label;
-  $("#target").textContent = summary.target_base_url.replace(/^https?:\/\//,"");
-  $("#modeBadge").textContent = summary.mode==="recorded_replay" ? "replay" : summary.mode;
-  $("#costbudget").textContent = "/ $"+Number(summary.budget_usd).toFixed(2);
-  renderPipeline(); renderFindings(); renderResilience(); renderCoverageSkeleton();
-  restart();
-}
+function parseSSE(chunk){let ev="message",data="";chunk.split("\n").forEach(l=>{if(l.startsWith("event:"))ev=l.slice(6).trim();else if(l.startsWith("data:"))data+=l.slice(5).trim();});try{data=JSON.parse(data);}catch(e){}return{ev,data};}
 
-function renderPipeline(){
-  const p=$("#pipe"); p.innerHTML="";
-  AGENTS.forEach((a,i)=>{
-    const n=el("div","node "+a.cls,`<div class="r">${a.role}</div><div class="nm">${a.nm}</div><div class="md">${a.md}</div>`);
-    n.id="node-"+a.key; p.appendChild(n);
-    if(a.key==="red_team"){ p.appendChild(el("span","boundary","⟂ no shared context")); }
-    else if(i<AGENTS.length-1){ p.appendChild(el("span","sep","→")); }
-  });
+async function start(){
+  const token=$("#token").value.trim();
+  if(!token){msg("Paste a launch-bound token first — get one by launching the Co-Pilot from a patient chart.","err");return;}
+  if(selected.size===0){msg("Select at least one attack category.","err");return;}
+  resetLive();paint();msg("Validating token…","info");setRunning(true);setStatus("starting","running");
+  let res;
+  try{ res=await fetch("/api/run",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({token,categories:[...selected]})}); }
+  catch(e){ msg("Network error starting campaign.","err");setRunning(false);setStatus("idle");return; }
+  if(!res.ok){ const e=await res.json().catch(()=>({error:res.statusText})); msg(e.error||"Failed to start.","err");setRunning(false);setStatus("idle");return; }
+  msg("Campaign running — Kimi generating and firing live…","info");setStatus("running","running");
+  const reader=res.body.getReader();const dec=new TextDecoder();let buf="";
+  try{
+    while(true){
+      const {value,done}=await reader.read();if(done)break;
+      buf+=dec.decode(value,{stream:true});let i;
+      while((i=buf.indexOf("\n\n"))>=0){const {ev,data}=parseSSE(buf.slice(0,i));buf=buf.slice(i+2);
+        if(ev==="start"){live.total=data.total;paint();}
+        else if(ev==="attempt"){onAttempt(data);}
+        else if(ev==="done"){setStatus("done · "+live.b.success+" breaches","done");msg("Campaign complete — "+data.attempts+" attempts, $"+data.cost_usd.toFixed(3)+" spent.","info");}
+        else if(ev==="stopped"){setStatus("stopped","stopped");msg("Campaign halted by operator.","info");}
+        else if(ev==="error"){setStatus("error");msg("Runner error: "+(data.message||"unknown"),"err");}
+      }
+    }
+  }catch(e){ msg("Stream interrupted.","err"); }
+  setRunning(false);
 }
-function renderFindings(){
-  const b=$("#findings"); b.innerHTML="";
-  findings.findings.forEach(f=>{
-    const tr=el("tr");
-    tr.appendChild(el("td",null,`<span class="fid">${f.finding_id}</span><div class="fsum">${f.summary}</div>`));
-    tr.appendChild(el("td",null,`<span class="mono" style="font-size:11px">${CAT_LABEL[f.attack_category]||f.attack_category}</span>`));
-    tr.appendChild(el("td",null,`<span class="sev ${f.severity}">${f.severity}</span>`));
-    const st = f.status==="awaiting_human_approval"
-      ? `<span class="gate">⏸ awaiting approval</span>`
-      : `<span class="status ${f.status}">${f.status.replace(/_/g," ")}</span>`;
-    tr.appendChild(el("td",null,st));
-    b.appendChild(tr);
-  });
-  $("#findcount").textContent = findings.findings.length+" findings · "+summary.awaiting_approval+" gated";
-}
-function renderResilience(){
-  const s=$("#spark"); s.innerHTML="";
-  const h=summary.resilience_history; const max=Math.max(...h.map(x=>x.attempts),1);
-  h.forEach((x,i)=>{
-    const col=el("div",null,"");
-    col.style.cssText=`flex:1;display:flex;flex-direction:column;justify-content:flex-end;align-items:center;gap:3px`;
-    const bh=Math.max(6,(x.breaches/max)*34);
-    const bar=el("div",null,"");
-    bar.style.cssText=`width:60%;height:${bh}px;border-radius:3px;background:${x.breaches>2?'var(--breach)':x.breaches>0?'var(--high)':'var(--held)'};transition:.4s`;
-    const lab=el("div",null,x.breaches);
-    lab.style.cssText="font-family:var(--mono);font-size:10px;color:var(--muted)";
-    col.appendChild(bar); col.appendChild(lab); s.appendChild(col);
-  });
-  $("#trendold").textContent = h[0].target_version.split("@").pop()+": "+h[0].breaches+" breaches";
-  $("#trendnew").textContent = h[h.length-1].target_version.split("@").pop()+": "+h[h.length-1].breaches+" breaches";
-}
-function renderCoverageSkeleton(){
-  const c=$("#cov"); c.innerHTML="";
-  coverage.categories.forEach(cat=>{
-    const row=el("div","covrow");
-    row.innerHTML=`<div class="name">${CAT_LABEL[cat.category]||cat.category}</div>
-      <div class="cnt" id="cnt-${cat.category}"><b>0</b> fired</div>
-      <div class="bar" id="bar-${cat.category}"><i class="s" style="width:0"></i><i class="p" style="width:0"></i><i class="f" style="width:0"></i></div>`;
-    c.appendChild(row);
-  });
-  $("#covcount").textContent = summary.categories_total+" mapped";
-}
+async function stop(){ $("#stop").disabled=true;msg("Stopping after current attempt…","info");try{await fetch("/api/stop",{method:"POST"});}catch(e){} }
 
-// ---- replay engine ----
-const live = {seen:0, cost:0, bands:{success:0,partial:0,fail:0}, cov:{}};
-function resetLive(){
-  live.seen=0; live.cost=0; live.bands={success:0,partial:0,fail:0}; live.cov={};
-  coverage.categories.forEach(c=>live.cov[c.category]={attempts:0,success:0,partial:0,fail:0});
-  $("#feed").innerHTML=""; idx=0;
-  renderStats(); paintCoverage(); paintBands(); paintCost();
-  AGENTS.forEach(a=>$("#node-"+a.key)?.classList.remove("active"));
-}
-function renderStats(){
-  const b=live.bands;
-  $("#stats").innerHTML=`
-    <div class="stat"><div class="n">${live.seen}</div><div class="l">attempts</div></div>
-    <div class="stat breach"><div class="n">${b.success}</div><div class="l">breaches</div></div>
-    <div class="stat partial"><div class="n">${b.partial}</div><div class="l">partial</div></div>
-    <div class="stat held"><div class="n">${b.fail}</div><div class="l">defense held</div></div>
-    <div class="stat"><div class="n">${summary.categories_covered}<span style="color:var(--dim);font-size:15px">/6</span></div><div class="l">coverage</div></div>
-    <div class="stat cost"><div class="n">$${live.cost.toFixed(2)}</div><div class="l">spend / $${Number(summary.budget_usd).toFixed(0)} budget</div></div>`;
-  $("#feedcount").textContent = live.seen+" / "+campaign.attempts.length;
-}
-function paintCoverage(){
-  coverage.categories.forEach(cat=>{
-    const v=live.cov[cat.category]||{attempts:0,success:0,partial:0,fail:0};
-    const tot=Math.max(v.attempts,1);
-    const bar=$("#bar-"+cat.category); if(!bar)return;
-    bar.children[0].style.width=(v.success/tot*100)+"%";
-    bar.children[1].style.width=(v.partial/tot*100)+"%";
-    bar.children[2].style.width=(v.fail/tot*100)+"%";
-    $("#cnt-"+cat.category).innerHTML=`<b>${v.attempts}</b> fired`;
-  });
-}
-function paintBands(){
-  const t=Math.max(live.seen,1); const b=live.bands;
-  $("#bands").innerHTML=
-    `<i style="width:${b.success/t*100}%;background:var(--breach)"></i>`+
-    `<i style="width:${b.partial/t*100}%;background:var(--partial)"></i>`+
-    `<i style="width:${b.fail/t*100}%;background:var(--held)"></i>`;
-}
-function paintCost(){
-  const pct=Math.min(100, live.cost/Number(summary.budget_usd)*100);
-  $("#costbar").style.width=pct+"%";
-  $("#costnow").textContent="$"+live.cost.toFixed(3);
-}
-function highlight(a){
-  AGENTS.forEach(x=>$("#node-"+x.key)?.classList.remove("active"));
-  (a.agent_path||[]).forEach(k=>$("#node-"+k)?.classList.add("active"));
-  $("#node-judge")?.classList.add("active");
-}
-function addRow(a){
-  const brk=a.verdict==="success";
-  const row=el("div","row"+(brk?" brk":""));
-  const hops=(a.agent_path||[]).map(k=>`<span class="hop ${k}">${k.replace("_"," ").replace("orchestrator","orch")}</span>`).join('<span class="arrow">▸</span>');
-  row.innerHTML=`
-    <div class="seq">${String(a.seq).padStart(2,"0")}</div>
-    <div class="mid">
-      <span class="cat">${CAT_LABEL[a.category]||a.category}</span> <span class="sub">· ${a.subcategory}</span>
-      <div class="route">${a.route}</div>
-      <div class="path">${hops}</div>
-    </div>
-    <div class="right">
-      <span class="http">HTTP ${a.http_status}</span>
-      <span class="pill ${a.verdict}">${a.verdict==="fail"?"held":a.verdict}</span>
-      ${a.predicate?`<span class="predicate">${a.predicate}</span>`:""}
-    </div>`;
-  const feed=$("#feed"); feed.insertBefore(row, feed.firstChild);
-}
-function step(){
-  if(idx>=campaign.attempts.length){ pause(); return; }
-  const a=campaign.attempts[idx++];
-  live.seen++; live.cost+=a.cost_usd||0;
-  if(a.verdict in live.bands) live.bands[a.verdict]++;
-  const cv=live.cov[a.category]||(live.cov[a.category]={attempts:0,success:0,partial:0,fail:0});
-  cv.attempts++; if(a.verdict in cv) cv[a.verdict]++;
-  addRow(a); highlight(a); renderStats(); paintCoverage(); paintBands(); paintCost();
-  timer=setTimeout(step, 1100/speed);
-}
-function play(){ playing=true; $("#btnPlay").textContent="⏸ pause"; step(); }
-function pause(){ playing=false; clearTimeout(timer); $("#btnPlay").textContent="▶ play"; }
-function restart(){ clearTimeout(timer); resetLive(); play(); }
-
-$("#btnPlay").onclick=()=> playing?pause():play();
-$("#btnRestart").onclick=restart;
-$("#btnSpeed").onclick=()=>{ speed = speed>=4?1:speed*2; $("#btnSpeed").textContent=speed+"×"; };
-boot();
+$("#start").onclick=start;
+$("#stop").onclick=stop;
+document.querySelectorAll(".tab").forEach(t=>t.onclick=()=>{document.querySelectorAll(".tab").forEach(x=>x.classList.remove("on"));document.querySelectorAll(".tabpane").forEach(x=>x.classList.remove("on"));t.classList.add("on");$("#pane-"+t.dataset.t).classList.add("on");});
+fetch("/api/status").then(r=>r.json()).then(s=>{}).catch(()=>{});
+$("#target").textContent="target: openemr-production-4eba.up.railway.app";
+initChips();initStatic();
 </script>
 </body>
 </html>
