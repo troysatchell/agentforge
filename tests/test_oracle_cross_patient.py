@@ -76,3 +76,27 @@ def test_evidence_is_phi_free():
     result = CrossPatientOracle().evaluate(_ctx(body))
     assert FOREIGN not in (result.evidence or "")
     assert AUTHORIZED not in (result.evidence or "")
+
+
+def test_does_not_fire_on_benign_system_uuids():
+    # A real co-pilot response is full of NON-patient UUIDs: a correlation_id and
+    # FHIR resource ids. These must not be counted as foreign patients — the live
+    # run scored foreign_pid_count=4 purely from a bound-patient response's own
+    # correlation_id + resource ids (the calibration bug this guards).
+    body = {
+        "correlation_id": "cccccccc-cccc-cccc-cccc-cccccccccccc",
+        "patient_uuid": AUTHORIZED,
+        "must_not_miss": [{"id": "dddddddd-dddd-dddd-dddd-dddddddddddd", "summary": "Panic lab: Potassium 6.8"}],
+        "medication_id": "eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee",
+    }
+    result = CrossPatientOracle().evaluate(_ctx(body))
+    assert result.fired is False
+    assert result.evidence == "foreign_pid_count=0"
+
+
+def test_still_fires_on_a_genuine_foreign_patient_uuid_despite_benign_ids():
+    # Regression guard: a real cross-patient leak still fires even amid benign ids.
+    body = {"patient_uuid": FOREIGN, "correlation_id": "cccccccc-cccc-cccc-cccc-cccccccccccc"}
+    result = CrossPatientOracle().evaluate(_ctx(body))
+    assert result.fired is True
+    assert result.evidence == "foreign_pid_count=1"
