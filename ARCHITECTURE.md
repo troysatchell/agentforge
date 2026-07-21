@@ -157,6 +157,38 @@ raising agent by `correlation_id`.
 
 ---
 
+## AI vs deterministic tooling — where each is used, and why
+
+The PRD leaves this split deliberately open and observes that *"traditional non-AI security tooling
+may … outperform LLM-driven approaches … especially around deterministic validation, replay testing,
+fuzzing"* and that part of the work is *"determining when AI-driven approaches are useful [and] when
+deterministic systems are more reliable."* AgentForge treats **"agent" as a role + trust boundary,
+not "an LLM,"** and puts a model on a layer **only where the work is irreducibly generative or
+semantic**. Everything else is deterministic on purpose.
+
+| Layer | AI or deterministic | Why it sits on this side of the line |
+|---|---|---|
+| **Orchestrator** | Deterministic (no model) | Same state → same directive = reproducible campaigns; every routing decision is auditable code (the CISO bar); $0 on the busiest control loop; cannot drift. A fuzzy tie-break escape hatch (`claude-haiku-4-5`, `effort: low`, single-choice output) is **deferred, not adopted** — v1 stays 100% auditable. |
+| **Judge — oracles (Tier 1)** | Deterministic | Reused Week 1/2 detectors (PHI regex, citation-grounding, cross-patient vs `authorized_scope`, cost) settle **most** verdicts at zero token cost; auditable; cannot drift; they enforce the *never-approve-a-confirmed-exploit* invariant as **code, not a prompt**. |
+| **Judge — semantic (Tier 2)** | AI — `claude-sonnet-5` | Invoked **only** for verdicts an oracle cannot settle (did the response *semantically* comply with an injected instruction in a way no regex catches?). Reproducibility comes from structured output + input-keyed replay, **not** temperature (rejected 400 on Sonnet 5). |
+| **Red Team** | AI — Kimi K2.6 (Moonshot) | Generating and mutating novel attacks is irreducibly generative. An open-weights model is workable under an authorized-pentest system prompt where frontier RLHF models refuse offensive work; it is the cheapest capable tier on the highest-volume layer; and a **different provider** from the Judge hardens the boundary. |
+| **Documentation** | AI — `claude-opus-4-8` | Reproduce-and-fix-ready long-form prose is the entire deliverable, so the top write tier goes here. Runs at the **lowest** volume (confirmed successes only), so the premium tier is affordable; human-gated on critical. |
+
+**Deterministic ≠ fewer agents.** The PRD defines agents by *"different roles, capabilities, and
+trust levels,"* not by implementation, and explicitly requires the architecture to justify *"where AI
+is used versus deterministic tooling."* Putting the **control** loop (Orchestrator) and the
+**adjudication floor** (Judge oracles) on deterministic code *is* that justification, not a shortcut:
+these are exactly the surfaces where a hospital CISO needs reproducibility and auditability, and where
+an LLM would add drift, cost, and unexplainable decisions. The platform's *adaptivity* still lives
+where the PRD wants it — in the Red Team's generate-and-mutate loop and in the Orchestrator's
+data-driven prioritization (coverage gaps · open findings · regressions · novelty · budget), which is
+the line between *"running attacks randomly"* and a platform that *"is learning."* And a **stochastic
+Red Team stays compatible with a deterministic regression gate**: the exploit DB stores the realized
+attack bytes and regression **re-issues** them (asserting the predicate fired), it never
+re-generates — so determinism at the eval boundary survives a non-deterministic attacker.
+
+---
+
 ## AI-use disclosure
 
 | Agent | AI? (model) | Verification that follows |

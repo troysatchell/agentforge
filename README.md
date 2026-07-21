@@ -11,9 +11,12 @@ deployed HTTP target.*
 
 ## Status (this pass)
 
-**Docs-first.** The non-code deliverables are being assembled before code. Platform language /
-framework / per-role models (decisions **D1/D2/D3**) are not yet locked, so code scaffolding and the
-D1-dependent sections of `ARCHITECTURE.md` (framework, cost-at-scale) are deferred.
+**Code + docs.** Decisions **D1** (Python), **D2** (LangGraph), **D3** (per-role models) are locked,
+and the **deterministic core is built and green** (full test suite passing): the deterministic
+Orchestrator, deterministic-first Judge oracles, SQLite exploit store, and the input-keyed eval
+replay runner over a LangGraph skeleton. Remaining code is the **model-backed layers** — Red Team
+(Kimi), the Judge's semantic residue (Sonnet 5), Documentation (Opus 4.8) — plus the live target
+client (SMART launch) and eval cases run against the deployed target.
 
 | Deliverable | State |
 |---|---|
@@ -24,9 +27,9 @@ D1-dependent sections of `ARCHITECTURE.md` (framework, cost-at-scale) are deferr
 | `docs/AGENT_INTERACTION.md` (evidence packet + diagram) | ✅ (feeds `ARCHITECTURE.md`) |
 | `docs/VULN_REPORT_TEMPLATE.md` | ✅ (Documentation-Agent output format) |
 | `docs/OBSERVABILITY.md` (the 6 questions → metrics) | ✅ |
-| `evals/` (case template + schema) | ✅ template; ⏳ cases need the live runner |
-| `ARCHITECTURE.md` | ⏳ pending D1/D2/D3 (material ready in `docs/`) |
-| code (agents, target_client, harness, oracles) | ⏳ pending D1 |
+| `evals/` (case template + schema) | ✅ template + input-keyed replay runner; ⏳ live cases vs deployed target |
+| `ARCHITECTURE.md` | ✅ complete (hard gate) — incl. AI-use disclosure + AI-vs-deterministic justification |
+| code (agents, target_client, harness, oracles) | 🟡 deterministic core built + green (Orchestrator, Judge oracles, exploit store, replay); ⏳ model-backed layers + live target client |
 
 ## The target (Stage 1 — stand-up)
 
