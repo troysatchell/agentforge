@@ -68,24 +68,32 @@ class TargetAllowlist:
         self._port = _effective_port(parsed)
 
     def is_allowed(self, url: str) -> bool:
-        """Return True only if ``url`` matches the authorized scheme/host/port."""
+        """Return True only if ``url`` matches the authorized scheme/host/port.
 
-        parsed = urlsplit(url)
+        Parser-level garbage (malformed IPv6 literal, bad port, ...) fails
+        CLOSED: any ``ValueError`` from URL parsing resolves to out-of-scope
+        rather than propagating, so ``check()`` always raises ``OutOfScopeError``.
+        """
 
-        # Reject any URL carrying userinfo in the netloc (SSRF host-confusion).
-        if parsed.username is not None or parsed.password is not None:
-            return False
+        try:
+            parsed = urlsplit(url)
 
-        if not parsed.scheme or not parsed.hostname:
-            return False
+            # Reject any URL carrying userinfo in the netloc (SSRF host-confusion).
+            if parsed.username is not None or parsed.password is not None:
+                return False
 
-        if parsed.scheme.lower() != self._scheme:
-            return False
+            if not parsed.scheme or not parsed.hostname:
+                return False
 
-        if parsed.hostname.lower() != self._host:
-            return False
+            if parsed.scheme.lower() != self._scheme:
+                return False
 
-        if _effective_port(parsed) != self._port:
+            if parsed.hostname.lower() != self._host:
+                return False
+
+            if _effective_port(parsed) != self._port:
+                return False
+        except ValueError:
             return False
 
         return True

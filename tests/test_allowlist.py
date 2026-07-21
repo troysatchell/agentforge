@@ -91,3 +91,12 @@ def test_non_http_url_is_rejected():
     guard = TargetAllowlist(BASE)
     # file:// / gopher:// etc. must never be considered in-scope
     assert guard.is_allowed("file:///etc/passwd") is False
+
+
+def test_malformed_url_fails_closed_as_out_of_scope():
+    guard = TargetAllowlist(BASE)
+    # Parser-level garbage (e.g. a malformed IPv6 literal) must fail CLOSED as
+    # out-of-scope — never leak a raw ValueError out of the guard's contract.
+    assert guard.is_allowed("https://[::1/x") is False
+    with pytest.raises(OutOfScopeError):
+        guard.check("https://[::1/x")
