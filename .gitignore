@@ -32,5 +32,10 @@ traces/
 # --- course reference material (PRD handout; not part of the platform) ---
 projectguidelines/
 
+# --- agent tooling scratch (lavish review artifacts, tdd-loop board/worktrees) ---
+.lavish/
+.tdd-loop/
+.tdd-worktrees/
+
 #Ignore vscode AI rules
 .github/instructions/codacy.instructions.md
