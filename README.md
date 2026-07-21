@@ -9,14 +9,66 @@ deployed HTTP target.*
 > co-pilot is one *target instance* — the agents *discover* findings; specific vulnerabilities are
 > seed/ground-truth, not wired-in constants.
 
+## ▶ Run it yourself (graders start here)
+
+Watch the platform generate real attacks with Kimi K2.6, fire them at the **live** Clinical Co-Pilot,
+and judge each one — including a genuine **critical breach** that stops at a human-approval gate.
+
+| | |
+|---|---|
+| **Operator console** | https://agentforge-console-production.up.railway.app |
+| **Deployed target** | https://openemr-production-4eba.up.railway.app |
+
+### A · Deployed console — zero setup, ~2 minutes
+
+The console is **token-gated**: no valid launch-bound token, nothing fires (the public URL can't
+attack anything on its own). So first mint a token, then run:
+
+1. **Get a launch-bound token.** In a new tab, log into the target OpenEMR as the demo physician
+   **`dr.tran` / `Password123!`** → open any patient → click **Co-Pilot** in the chart's left menu
+   (the panel loads). Then open **DevTools → Network**, type `copilot` in the filter, click any
+   request → **Headers → Request Headers**, and copy the value after `Authorization: Bearer ` (the
+   long token).
+2. **Run it.** In the console, paste the token, tick **Prompt injection · Data exfiltration · Tool
+   misuse**, and press **▶ Start**.
+3. **Watch it stream (~50s)** — each attack is generated live, fired, and judged:
+   - **Prompt injection** → *held* (HTTP 200, the model refused; the planted canary was never echoed)
+   - **Data exfiltration** (cross-patient) → *blocked* (**HTTP 403** — launch-binding holds)
+   - **Tool misuse** → **CRITICAL breach** (V1 local-file-read: the `/document` endpoint reads an
+     out-of-scope server file and attaches it to the chart) → **Findings tab → ⏸ awaiting approval**
+   - **■ Stop** halts it anytime (the orchestrator's cost/no-signal halt, made real).
+
+Verdicts use only honest signals (HTTP auth boundary + injection canary + file-read marker); the
+console shows ids / category / status / verdict / predicate / cost — never raw response bytes.
+
+### B · Run locally
+
+```bash
+git clone https://github.com/troysatchell/agentforge && cd agentforge
+python3 -m venv .venv && source .venv/bin/activate    # Python ≥ 3.11
+pip install -e '.[web,dev]'
+
+pytest                         # full suite (~200 tests, no keys needed)
+
+cp .env.example .env           # fill MOONSHOT_API_KEY + TARGET_BASE_URL for the live console
+python -m agentforge.web       # operator console on http://localhost:8000
+```
+
+### Already-captured evidence
+
+`evals/results/live-run.json` — a real run across **all 6 categories** (5 held incl. the cross-patient
+403, **1 critical V1 breach**, $0.03 real spend), PHI-free, with provenance. Reproducible without a
+live token.
+
 ## Status (this pass)
 
-**Code + docs.** Decisions **D1** (Python), **D2** (LangGraph), **D3** (per-role models) are locked,
-and the **deterministic core is built and green** (full test suite passing): the deterministic
-Orchestrator, deterministic-first Judge oracles, SQLite exploit store, and the input-keyed eval
-replay runner over a LangGraph skeleton. Remaining code is the **model-backed layers** — Red Team
-(Kimi), the Judge's semantic residue (Sonnet 5), Documentation (Opus 4.8) — plus the live target
-client (SMART launch) and eval cases run against the deployed target.
+**Live end-to-end.** The platform runs real attacks against the deployed co-pilot: an **operator
+console** (`agentforge/web/`) where **Kimi K2.6** generates each attack, the `TargetClient` fires it
+at the authenticated co-pilot with a launch-bound token, and a **deterministic verdict** streams back
+(see **Run it yourself** above). Built + green (~200 tests): deterministic Orchestrator, Judge
+oracles + honest verdict signals, SQLite exploit store, input-keyed replay, allowlist + target
+client, Kimi client, Red Team attack-gen, LangGraph skeleton. **Remaining (Final only):** the
+Documentation agent + ≥3 written vuln reports, Langfuse trace wiring, and the AI cost write-up.
 
 | Deliverable | State |
 |---|---|
@@ -27,9 +79,10 @@ client (SMART launch) and eval cases run against the deployed target.
 | `docs/AGENT_INTERACTION.md` (evidence packet + diagram) | ✅ (feeds `ARCHITECTURE.md`) |
 | `docs/VULN_REPORT_TEMPLATE.md` | ✅ (Documentation-Agent output format) |
 | `docs/OBSERVABILITY.md` (the 6 questions → metrics) | ✅ |
-| `evals/` (case template + schema) | ✅ template + input-keyed replay runner; ⏳ live cases vs deployed target |
+| `evals/` (cases + schema) | ✅ template + replay runner + **live results** (`evals/results/live-run.json`, 6 categories) |
 | `ARCHITECTURE.md` | ✅ complete (hard gate) — incl. AI-use disclosure + AI-vs-deterministic justification |
-| code (agents, target_client, harness, oracles) | 🟡 deterministic core built + green (Orchestrator, Judge oracles, exploit store, replay); ⏳ model-backed layers + live target client |
+| `agentforge/web/` (operator console) | ✅ **deployed** — token-gated live start/stop; Red Team (Kimi) + Judge fire at the deployed target over SSE |
+| code (agents, target client, oracles) | ✅ core + model-backed Red Team + live target client built & green; ⏳ Documentation agent (Final) |
 
 ## The target (Stage 1 — stand-up)
 
@@ -67,9 +120,15 @@ agentforge/
   README.md              # this file
   THREAT_MODEL.md        # HARD GATE — full attack-surface map (6 categories)
   USERS.md               # who the platform serves + why automation
-  ARCHITECTURE.md        # pending D1/D2/D3 (material in docs/AGENT_INTERACTION.md + DECISION_RECORD.md)
-  contracts/             # versioned inter-agent JSON Schemas (v1) + README
-  evals/                 # adversarial test-case template + schema (cases pending the live runner)
+  ARCHITECTURE.md        # HARD GATE — multi-agent plan + diagram + AI-use disclosure
+  VERDICT_BOUNDARIES.md  # (docs/) success/partial/fail — the deterministic 4-band rule
+  contracts/             # versioned inter-agent JSON Schemas (v1) + contract tests
+  evals/                 # adversarial cases + schema; evals/results/ = live-run results
+  agentforge/            # the platform package
+    web/                 #   operator console — FastAPI + token-gated live campaign (deployed)
+    redteam/ target/     #   Kimi client · attack-gen · allowlist · SMART/target client
+    judge/ store/        #   deterministic Judge + oracles · SQLite exploit store
+    contracts/ graph.py  #   pydantic contract models · LangGraph skeleton
   docs/
     DECISION_RECORD.md       # build-vs-configure (Garak/PyRIT/ZAP/Semgrep/...)
     AGENT_INTERACTION.md     # the four agents, diagram, trust boundaries, failure modes, AI-use
