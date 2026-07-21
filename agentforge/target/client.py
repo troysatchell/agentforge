@@ -95,6 +95,11 @@ class TargetClient:
         client_secret: str,
     ) -> tuple[str, str | None]:
         """Confidential authorization_code→token exchange; returns (access_token, patient)."""
+        # `state` is intentionally unused here: this client is the sole holder of
+        # {code, state} in a driver-controlled harness (no browser-mediated redirect
+        # to defend), so the state<->session replay/CSRF binding stays the server's
+        # job (launch-exchange.php: SmartLaunchSession::consume). Kept in the
+        # signature to mirror the server contract, NOT a dropped security check.
         self._allowlist.check(token_url)
 
         body = {
