@@ -1,0 +1,406 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AgentForge · Mission Control</title>
+<style>
+  :root{
+    --bg:#0a0e14; --panel:#0f151d; --panel2:#131c26; --line:#1c2732; --line2:#2a3947;
+    --text:#dbe4ef; --muted:#8595a7; --dim:#576372;
+    --accent:#5eead4; --accent-dim:#2b6f66;
+    --breach:#ff5d5d; --partial:#ffb84d; --held:#43d392; --info:#63a4ff;
+    --crit:#ff5d5d; --high:#ff9a4d; --med:#ffd34d; --low:#7f8ea3;
+    --mono:ui-monospace,"SF Mono","JetBrains Mono","Fira Code",Menlo,Consolas,monospace;
+    --sans:-apple-system,system-ui,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+  }
+  *,*::before,*::after{box-sizing:border-box}
+  :where(.grid,.stats,.cov,.pipe)>*{min-width:0}
+  html,body{margin:0}
+  body{background:
+      radial-gradient(1100px 500px at 85% -10%,rgba(94,234,212,.05),transparent 60%),
+      radial-gradient(900px 600px at 0% 110%,rgba(255,93,93,.04),transparent 55%),
+      var(--bg);
+    color:var(--text);font-family:var(--sans);font-size:14px;line-height:1.5;
+    -webkit-font-smoothing:antialiased}
+  .mono{font-family:var(--mono)}
+  a{color:var(--accent);text-decoration:none}
+
+  /* ---- top bar ---- */
+  .top{position:sticky;top:0;z-index:20;background:rgba(10,14,20,.82);backdrop-filter:blur(9px);
+    border-bottom:1px solid var(--line);padding:12px 20px;display:flex;align-items:center;gap:18px;flex-wrap:wrap}
+  .brand{display:flex;align-items:center;gap:10px;font-weight:700;letter-spacing:.01em}
+  .brand .mk{width:15px;height:15px;border:2.5px solid var(--accent);border-radius:3px;transform:rotate(45deg);
+    box-shadow:0 0 14px rgba(94,234,212,.55)}
+  .brand b{color:var(--accent)}
+  .top .eyebrow{font-family:var(--mono);font-size:10.5px;letter-spacing:.24em;text-transform:uppercase;color:var(--muted)}
+  .top .target{font-family:var(--mono);font-size:11.5px;color:var(--muted);margin-left:auto;display:flex;align-items:center;gap:8px}
+  .badge-replay{font-family:var(--mono);font-size:10px;letter-spacing:.14em;text-transform:uppercase;font-weight:700;
+    color:#0a0e14;background:var(--accent);padding:3px 8px;border-radius:5px}
+  .dot-live{width:7px;height:7px;border-radius:50%;background:var(--breach);box-shadow:0 0 8px var(--breach);animation:pulse 1.3s infinite}
+  @keyframes pulse{0%,100%{opacity:1}50%{opacity:.35}}
+
+  .wrap{max-width:1360px;margin:0 auto;padding:18px 20px 60px}
+
+  /* ---- stat strip ---- */
+  .stats{display:grid;grid-template-columns:repeat(6,1fr);gap:10px;margin-bottom:16px}
+  @media(max-width:900px){.stats{grid-template-columns:repeat(3,1fr)}}
+  @media(max-width:560px){.stats{grid-template-columns:repeat(2,1fr)}}
+  .stat{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:12px 14px}
+  .stat .n{font-family:var(--mono);font-size:24px;font-weight:700;line-height:1}
+  .stat .l{font-size:10.5px;color:var(--muted);margin-top:6px;text-transform:uppercase;letter-spacing:.09em}
+  .stat.breach .n{color:var(--breach)} .stat.held .n{color:var(--held)} .stat.partial .n{color:var(--partial)}
+  .stat.cost .n{color:var(--accent)}
+
+  /* ---- layout grid ---- */
+  .grid{display:grid;grid-template-columns:1.55fr 1fr;gap:16px}
+  @media(max-width:940px){.grid{grid-template-columns:1fr}}
+  .panel{background:var(--panel);border:1px solid var(--line);border-radius:12px;overflow:hidden}
+  .panel h2{margin:0;padding:12px 16px;font-size:11px;letter-spacing:.16em;text-transform:uppercase;color:var(--muted);
+    border-bottom:1px solid var(--line);display:flex;align-items:center;gap:9px;font-weight:600}
+  .panel h2 .c{margin-left:auto;font-family:var(--mono);font-size:11px;color:var(--dim)}
+  .col{display:flex;flex-direction:column;gap:16px}
+
+  /* ---- attempt feed (hero) ---- */
+  .feedwrap{max-height:560px;overflow-y:auto;padding:6px 0}
+  .feedwrap::-webkit-scrollbar{width:8px}.feedwrap::-webkit-scrollbar-thumb{background:var(--line2);border-radius:8px}
+  .row{display:grid;grid-template-columns:34px 1fr auto;gap:12px;align-items:center;padding:10px 16px;
+    border-bottom:1px solid rgba(28,39,50,.6);font-family:var(--mono);animation:slidein .34s ease}
+  @keyframes slidein{from{opacity:0;transform:translateY(-6px);background:rgba(94,234,212,.06)}to{opacity:1}}
+  .row .seq{color:var(--dim);font-size:11px}
+  .row .mid .cat{font-size:12.5px;color:var(--text)}
+  .row .mid .sub{font-size:11px;color:var(--muted)}
+  .row .mid .route{font-size:10.5px;color:var(--dim);margin-top:2px}
+  .row .path{display:flex;gap:4px;margin-top:5px;align-items:center;flex-wrap:wrap}
+  .hop{font-size:9px;letter-spacing:.06em;text-transform:uppercase;color:var(--dim);border:1px solid var(--line2);
+    border-radius:4px;padding:1px 5px}
+  .hop.judge{color:var(--info);border-color:rgba(99,164,255,.4)}
+  .hop.red_team{color:var(--partial);border-color:rgba(255,184,77,.4)}
+  .arrow{color:var(--dim);font-size:9px}
+  .right{text-align:right;display:flex;flex-direction:column;align-items:flex-end;gap:5px}
+  .http{font-size:11px;color:var(--muted)}
+  .pill{font-size:10px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;padding:3px 9px;border-radius:20px;white-space:nowrap}
+  .pill.success{color:var(--breach);background:rgba(255,93,93,.13);border:1px solid rgba(255,93,93,.4)}
+  .pill.partial{color:var(--partial);background:rgba(255,184,77,.12);border:1px solid rgba(255,184,77,.38)}
+  .pill.fail{color:var(--held);background:rgba(67,211,146,.11);border:1px solid rgba(67,211,146,.34)}
+  .predicate{font-size:10px;color:var(--breach);max-width:280px;text-align:right;line-height:1.35}
+  .row.brk{background:linear-gradient(90deg,rgba(255,93,93,.07),transparent 70%)}
+
+  /* ---- coverage grid ---- */
+  .cov{display:flex;flex-direction:column;gap:2px;padding:8px 0}
+  .covrow{display:grid;grid-template-columns:1fr auto;gap:10px;align-items:center;padding:8px 16px}
+  .covrow .name{font-size:11.5px;font-family:var(--mono)}
+  .covrow .bar{grid-column:1/-1;height:6px;border-radius:4px;background:var(--panel2);display:flex;overflow:hidden;margin-top:6px}
+  .covrow .bar i{display:block;height:100%;transition:width .5s ease}
+  .bar .s{background:var(--breach)} .bar .p{background:var(--partial)} .bar .f{background:var(--held)}
+  .covrow .cnt{font-family:var(--mono);font-size:11px;color:var(--muted)}
+  .covrow .cnt b{color:var(--text)}
+
+  /* ---- verdict bands + cost ---- */
+  .body{padding:14px 16px}
+  .bands{display:flex;height:12px;border-radius:6px;overflow:hidden;background:var(--panel2);margin:4px 0 12px}
+  .bands i{display:block;height:100%;transition:width .5s ease}
+  .legend{display:flex;gap:14px;font-family:var(--mono);font-size:11px;color:var(--muted);flex-wrap:wrap}
+  .legend span{display:inline-flex;align-items:center;gap:6px}
+  .legend .sw{width:9px;height:9px;border-radius:2px}
+  .meter{height:10px;border-radius:6px;background:var(--panel2);overflow:hidden;margin:10px 0 6px}
+  .meter i{display:block;height:100%;background:linear-gradient(90deg,var(--accent-dim),var(--accent));transition:width .5s ease}
+  .meta{display:flex;justify-content:space-between;font-family:var(--mono);font-size:11px;color:var(--muted)}
+
+  /* ---- pipeline ---- */
+  .pipe{display:flex;align-items:stretch;gap:0;padding:14px 16px;flex-wrap:wrap}
+  .node{flex:1;min-width:120px;border:1px solid var(--line2);border-radius:9px;padding:10px 12px;position:relative;transition:.25s}
+  .node.det{border-color:rgba(99,164,255,.35)} .node.ai{border-color:rgba(255,184,77,.35)}
+  .node.active{box-shadow:0 0 0 1px var(--accent),0 0 18px rgba(94,234,212,.25);transform:translateY(-2px)}
+  .node .r{font-size:9px;letter-spacing:.1em;text-transform:uppercase;color:var(--dim)}
+  .node .nm{font-size:12.5px;font-weight:600;margin-top:2px}
+  .node.det .nm{color:var(--info)} .node.ai .nm{color:var(--partial)}
+  .node .md{font-family:var(--mono);font-size:9.5px;color:var(--muted);margin-top:3px}
+  .pipe .sep{align-self:center;color:var(--dim);padding:0 7px;font-size:12px}
+  .boundary{font-family:var(--mono);font-size:9.5px;color:var(--breach);border:1px dashed rgba(255,93,93,.4);
+    border-radius:5px;padding:2px 7px;align-self:center;margin:0 4px;white-space:nowrap}
+
+  /* ---- findings ---- */
+  .ftable{width:100%;border-collapse:collapse;font-size:12px}
+  .ftable th{text-align:left;font-family:var(--mono);font-size:10px;letter-spacing:.08em;text-transform:uppercase;
+    color:var(--dim);padding:8px 16px;border-bottom:1px solid var(--line);font-weight:600}
+  .ftable td{padding:10px 16px;border-bottom:1px solid rgba(28,39,50,.55);vertical-align:top}
+  .ftable tr:last-child td{border-bottom:none}
+  .sev{font-family:var(--mono);font-size:10px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;padding:2px 7px;border-radius:5px}
+  .sev.critical{color:var(--crit);background:rgba(255,93,93,.14)} .sev.high{color:var(--high);background:rgba(255,154,77,.13)}
+  .sev.medium{color:var(--med);background:rgba(255,211,77,.12)} .sev.low{color:var(--low);background:rgba(127,142,163,.14)}
+  .fid{font-family:var(--mono);font-size:11px;color:var(--accent)}
+  .status{font-family:var(--mono);font-size:10.5px}
+  .status.awaiting_human_approval{color:var(--partial)} .status.open{color:var(--muted)} .status.resolved{color:var(--held)}
+  .gate{display:inline-flex;align-items:center;gap:6px;font-family:var(--mono);font-size:10px;color:var(--partial);
+    border:1px solid rgba(255,184,77,.4);border-radius:5px;padding:2px 7px}
+  .fsum{color:var(--muted);font-size:11.5px;margin-top:3px;max-width:520px}
+
+  /* ---- controls + sparkline ---- */
+  .controls{display:flex;align-items:center;gap:8px}
+  .btn{font-family:var(--mono);font-size:11px;color:var(--text);background:var(--panel2);border:1px solid var(--line2);
+    border-radius:6px;padding:5px 11px;cursor:pointer;transition:.15s}
+  .btn:hover{border-color:var(--accent);color:var(--accent)}
+  .spark{display:flex;align-items:flex-end;gap:0;height:44px;padding:6px 16px 12px}
+  .foot{margin-top:26px;text-align:center;font-family:var(--mono);font-size:10.5px;color:var(--dim)}
+  .phi{color:var(--held)}
+</style>
+</head>
+<body>
+
+<div class="top">
+  <div class="brand"><span class="mk"></span> Agent<b>Forge</b></div>
+  <div>
+    <div class="eyebrow">Mission Control</div>
+    <div id="camplabel" style="font-size:13px;margin-top:1px">loading…</div>
+  </div>
+  <div class="controls" style="margin-left:24px">
+    <button class="btn" id="btnPlay">⏸ pause</button>
+    <button class="btn" id="btnRestart">↺ restart</button>
+    <button class="btn" id="btnSpeed">2×</button>
+  </div>
+  <div class="target">
+    <span class="badge-replay" id="modeBadge">replay</span>
+    <span class="dot-live"></span>
+    <span id="target">—</span>
+  </div>
+</div>
+
+<div class="wrap">
+
+  <div class="stats" id="stats"></div>
+
+  <div class="grid">
+    <!-- HERO: live attempt feed -->
+    <div class="panel">
+      <h2>⚔ Live attempt feed <span class="c" id="feedcount">0 / 0</span></h2>
+      <div class="feedwrap" id="feed"></div>
+    </div>
+
+    <div class="col">
+      <div class="panel">
+        <h2>◎ Coverage · 6 categories <span class="c" id="covcount"></span></h2>
+        <div class="cov" id="cov"></div>
+      </div>
+      <div class="panel">
+        <h2>⚖ Verdict bands</h2>
+        <div class="body">
+          <div class="bands" id="bands"></div>
+          <div class="legend">
+            <span><i class="sw" style="background:var(--breach)"></i> breach (success)</span>
+            <span><i class="sw" style="background:var(--partial)"></i> partial</span>
+            <span><i class="sw" style="background:var(--held)"></i> defense held</span>
+          </div>
+        </div>
+      </div>
+      <div class="panel">
+        <h2>▤ Cost vs budget · orchestrator halt line</h2>
+        <div class="body">
+          <div class="meter"><i id="costbar" style="width:0%"></i></div>
+          <div class="meta"><span id="costnow">$0.000</span><span id="costbudget">/ $0</span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- agent pipeline -->
+  <div class="panel" style="margin-top:16px">
+    <h2>◇ Agent pipeline · Red Team ⟂ Judge enforced by shape</h2>
+    <div class="pipe" id="pipe"></div>
+  </div>
+
+  <div class="grid" style="margin-top:16px">
+    <!-- findings -->
+    <div class="panel">
+      <h2>⚑ Findings register · human gate on critical <span class="c" id="findcount"></span></h2>
+      <table class="ftable"><thead><tr><th>ID</th><th>Category</th><th>Sev</th><th>Status</th></tr></thead>
+      <tbody id="findings"></tbody></table>
+    </div>
+    <!-- resilience trend -->
+    <div class="panel">
+      <h2>↗ Resilience trend · breaches per target version</h2>
+      <div class="spark" id="spark"></div>
+      <div class="body" style="padding-top:0">
+        <div class="meta"><span id="trendold">—</span><span id="trendnew">—</span></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="foot">
+    AgentForge Console · read-only replay · <span class="phi">PHI-free</span> — ids · category · HTTP status · verdict band · oracle predicate only, never raw response bytes
+  </div>
+</div>
+
+<script>
+const CAT_LABEL = {
+  prompt_injection:"prompt injection", data_exfiltration:"data exfiltration",
+  state_corruption:"state corruption", tool_misuse:"tool misuse",
+  denial_of_service:"denial of service", identity_role_exploitation:"identity / role"
+};
+const AGENTS = [
+  {key:"orchestrator", role:"coordination", nm:"Orchestrator", md:"deterministic", cls:"det"},
+  {key:"red_team", role:"offensive", nm:"Red Team", md:"Kimi K2.6", cls:"ai"},
+  {key:"target", role:"target", nm:"Clinical Co-Pilot", md:"live HTTP", cls:"det"},
+  {key:"judge", role:"adjudication", nm:"Judge", md:"oracles + Sonnet 5", cls:"det"},
+  {key:"documentation", role:"reporting", nm:"Documentation", md:"Opus 4.8 + human", cls:"ai"},
+];
+const $ = s => document.querySelector(s);
+const el = (t,c,h) => { const e=document.createElement(t); if(c)e.className=c; if(h!=null)e.innerHTML=h; return e; };
+
+let campaign, coverage, summary, findings;
+let timer=null, idx=0, speed=2, playing=true;
+
+async function boot(){
+  [campaign, coverage, summary, findings] = await Promise.all([
+    fetch("/api/campaign").then(r=>r.json()),
+    fetch("/api/coverage").then(r=>r.json()),
+    fetch("/api/summary").then(r=>r.json()),
+    fetch("/api/findings").then(r=>r.json()),
+  ]);
+  $("#camplabel").textContent = summary.label;
+  $("#target").textContent = summary.target_base_url.replace(/^https?:\/\//,"");
+  $("#modeBadge").textContent = summary.mode==="recorded_replay" ? "replay" : summary.mode;
+  $("#costbudget").textContent = "/ $"+Number(summary.budget_usd).toFixed(2);
+  renderPipeline(); renderFindings(); renderResilience(); renderCoverageSkeleton();
+  restart();
+}
+
+function renderPipeline(){
+  const p=$("#pipe"); p.innerHTML="";
+  AGENTS.forEach((a,i)=>{
+    const n=el("div","node "+a.cls,`<div class="r">${a.role}</div><div class="nm">${a.nm}</div><div class="md">${a.md}</div>`);
+    n.id="node-"+a.key; p.appendChild(n);
+    if(a.key==="red_team"){ p.appendChild(el("span","boundary","⟂ no shared context")); }
+    else if(i<AGENTS.length-1){ p.appendChild(el("span","sep","→")); }
+  });
+}
+function renderFindings(){
+  const b=$("#findings"); b.innerHTML="";
+  findings.findings.forEach(f=>{
+    const tr=el("tr");
+    tr.appendChild(el("td",null,`<span class="fid">${f.finding_id}</span><div class="fsum">${f.summary}</div>`));
+    tr.appendChild(el("td",null,`<span class="mono" style="font-size:11px">${CAT_LABEL[f.attack_category]||f.attack_category}</span>`));
+    tr.appendChild(el("td",null,`<span class="sev ${f.severity}">${f.severity}</span>`));
+    const st = f.status==="awaiting_human_approval"
+      ? `<span class="gate">⏸ awaiting approval</span>`
+      : `<span class="status ${f.status}">${f.status.replace(/_/g," ")}</span>`;
+    tr.appendChild(el("td",null,st));
+    b.appendChild(tr);
+  });
+  $("#findcount").textContent = findings.findings.length+" findings · "+summary.awaiting_approval+" gated";
+}
+function renderResilience(){
+  const s=$("#spark"); s.innerHTML="";
+  const h=summary.resilience_history; const max=Math.max(...h.map(x=>x.attempts),1);
+  h.forEach((x,i)=>{
+    const col=el("div",null,"");
+    col.style.cssText=`flex:1;display:flex;flex-direction:column;justify-content:flex-end;align-items:center;gap:3px`;
+    const bh=Math.max(6,(x.breaches/max)*34);
+    const bar=el("div",null,"");
+    bar.style.cssText=`width:60%;height:${bh}px;border-radius:3px;background:${x.breaches>2?'var(--breach)':x.breaches>0?'var(--high)':'var(--held)'};transition:.4s`;
+    const lab=el("div",null,x.breaches);
+    lab.style.cssText="font-family:var(--mono);font-size:10px;color:var(--muted)";
+    col.appendChild(bar); col.appendChild(lab); s.appendChild(col);
+  });
+  $("#trendold").textContent = h[0].target_version.split("@").pop()+": "+h[0].breaches+" breaches";
+  $("#trendnew").textContent = h[h.length-1].target_version.split("@").pop()+": "+h[h.length-1].breaches+" breaches";
+}
+function renderCoverageSkeleton(){
+  const c=$("#cov"); c.innerHTML="";
+  coverage.categories.forEach(cat=>{
+    const row=el("div","covrow");
+    row.innerHTML=`<div class="name">${CAT_LABEL[cat.category]||cat.category}</div>
+      <div class="cnt" id="cnt-${cat.category}"><b>0</b> fired</div>
+      <div class="bar" id="bar-${cat.category}"><i class="s" style="width:0"></i><i class="p" style="width:0"></i><i class="f" style="width:0"></i></div>`;
+    c.appendChild(row);
+  });
+  $("#covcount").textContent = summary.categories_total+" mapped";
+}
+
+// ---- replay engine ----
+const live = {seen:0, cost:0, bands:{success:0,partial:0,fail:0}, cov:{}};
+function resetLive(){
+  live.seen=0; live.cost=0; live.bands={success:0,partial:0,fail:0}; live.cov={};
+  coverage.categories.forEach(c=>live.cov[c.category]={attempts:0,success:0,partial:0,fail:0});
+  $("#feed").innerHTML=""; idx=0;
+  renderStats(); paintCoverage(); paintBands(); paintCost();
+  AGENTS.forEach(a=>$("#node-"+a.key)?.classList.remove("active"));
+}
+function renderStats(){
+  const b=live.bands;
+  $("#stats").innerHTML=`
+    <div class="stat"><div class="n">${live.seen}</div><div class="l">attempts</div></div>
+    <div class="stat breach"><div class="n">${b.success}</div><div class="l">breaches</div></div>
+    <div class="stat partial"><div class="n">${b.partial}</div><div class="l">partial</div></div>
+    <div class="stat held"><div class="n">${b.fail}</div><div class="l">defense held</div></div>
+    <div class="stat"><div class="n">${summary.categories_covered}<span style="color:var(--dim);font-size:15px">/6</span></div><div class="l">coverage</div></div>
+    <div class="stat cost"><div class="n">$${live.cost.toFixed(2)}</div><div class="l">spend / $${Number(summary.budget_usd).toFixed(0)} budget</div></div>`;
+  $("#feedcount").textContent = live.seen+" / "+campaign.attempts.length;
+}
+function paintCoverage(){
+  coverage.categories.forEach(cat=>{
+    const v=live.cov[cat.category]||{attempts:0,success:0,partial:0,fail:0};
+    const tot=Math.max(v.attempts,1);
+    const bar=$("#bar-"+cat.category); if(!bar)return;
+    bar.children[0].style.width=(v.success/tot*100)+"%";
+    bar.children[1].style.width=(v.partial/tot*100)+"%";
+    bar.children[2].style.width=(v.fail/tot*100)+"%";
+    $("#cnt-"+cat.category).innerHTML=`<b>${v.attempts}</b> fired`;
+  });
+}
+function paintBands(){
+  const t=Math.max(live.seen,1); const b=live.bands;
+  $("#bands").innerHTML=
+    `<i style="width:${b.success/t*100}%;background:var(--breach)"></i>`+
+    `<i style="width:${b.partial/t*100}%;background:var(--partial)"></i>`+
+    `<i style="width:${b.fail/t*100}%;background:var(--held)"></i>`;
+}
+function paintCost(){
+  const pct=Math.min(100, live.cost/Number(summary.budget_usd)*100);
+  $("#costbar").style.width=pct+"%";
+  $("#costnow").textContent="$"+live.cost.toFixed(3);
+}
+function highlight(a){
+  AGENTS.forEach(x=>$("#node-"+x.key)?.classList.remove("active"));
+  (a.agent_path||[]).forEach(k=>$("#node-"+k)?.classList.add("active"));
+  $("#node-judge")?.classList.add("active");
+}
+function addRow(a){
+  const brk=a.verdict==="success";
+  const row=el("div","row"+(brk?" brk":""));
+  const hops=(a.agent_path||[]).map(k=>`<span class="hop ${k}">${k.replace("_"," ").replace("orchestrator","orch")}</span>`).join('<span class="arrow">▸</span>');
+  row.innerHTML=`
+    <div class="seq">${String(a.seq).padStart(2,"0")}</div>
+    <div class="mid">
+      <span class="cat">${CAT_LABEL[a.category]||a.category}</span> <span class="sub">· ${a.subcategory}</span>
+      <div class="route">${a.route}</div>
+      <div class="path">${hops}</div>
+    </div>
+    <div class="right">
+      <span class="http">HTTP ${a.http_status}</span>
+      <span class="pill ${a.verdict}">${a.verdict==="fail"?"held":a.verdict}</span>
+      ${a.predicate?`<span class="predicate">${a.predicate}</span>`:""}
+    </div>`;
+  const feed=$("#feed"); feed.insertBefore(row, feed.firstChild);
+}
+function step(){
+  if(idx>=campaign.attempts.length){ pause(); return; }
+  const a=campaign.attempts[idx++];
+  live.seen++; live.cost+=a.cost_usd||0;
+  if(a.verdict in live.bands) live.bands[a.verdict]++;
+  const cv=live.cov[a.category]||(live.cov[a.category]={attempts:0,success:0,partial:0,fail:0});
+  cv.attempts++; if(a.verdict in cv) cv[a.verdict]++;
+  addRow(a); highlight(a); renderStats(); paintCoverage(); paintBands(); paintCost();
+  timer=setTimeout(step, 1100/speed);
+}
+function play(){ playing=true; $("#btnPlay").textContent="⏸ pause"; step(); }
+function pause(){ playing=false; clearTimeout(timer); $("#btnPlay").textContent="▶ play"; }
+function restart(){ clearTimeout(timer); resetLive(); play(); }
+
+$("#btnPlay").onclick=()=> playing?pause():play();
+$("#btnRestart").onclick=restart;
+$("#btnSpeed").onclick=()=>{ speed = speed>=4?1:speed*2; $("#btnSpeed").textContent=speed+"×"; };
+boot();
+</script>
+</body>
+</html>
