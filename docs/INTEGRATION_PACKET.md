@@ -58,7 +58,7 @@ join key), and a report is produced only on a `success` verdict. Covered by
 
 ## Cross-agent dependency map
 
-```
+```text
 Orchestrator ──①AttackDirective──▶ Red Team ──③AttackResult──▶ Judge ──⑤Verdict──▶ Documentation
      ▲                                                            │
      └──────────────── exploit store / observability ◀───────────┘   (Orchestrator reads coverage/

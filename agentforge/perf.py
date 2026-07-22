@@ -71,6 +71,8 @@ def run_load(
     Each stage's result feeds the next; per-stage elapsed_ms is collected across
     all iterations into a :class:`LoadProfile` (latency, throughput, bottleneck).
     """
+    if n < 1:
+        raise ValueError("n must be >= 1")
     samples: dict[str, list[float]] = {"generate": [], "judge": [], "persist": []}
 
     for _ in range(n):
@@ -83,7 +85,7 @@ def run_load(
 
     stages = {stage: _summarize(stage, s) for stage, s in samples.items()}
     wall_ms = sum(sum(s) for s in samples.values())
-    throughput_per_s = n / (wall_ms / 1000.0)
+    throughput_per_s = n / (wall_ms / 1000.0) if wall_ms > 0 else float("inf")
     bottleneck = max(stages, key=lambda stage: stages[stage].mean_ms)
 
     return LoadProfile(

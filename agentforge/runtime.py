@@ -1,16 +1,18 @@
-"""PERF1 / TRO-131 — platform resilience primitives (STUB for the RED phase;
-replaced by the PERF1 coding agent).
+"""PERF1 / TRO-131 — platform resilience primitives.
 
 The platform's OWN operational safety under load: an exponential-backoff-with-
 jitter retry for provider 429s, and a bounded, depth-monitored work queue that
 aborts with a typed error the Orchestrator can catch rather than growing without
-bound.
+bound. The queue is thread-safe so concurrent attack workers can share it without
+exceeding the cap.
 """
 
 from __future__ import annotations
 
 import random
+import threading
 import time
+from collections import deque
 from typing import Any, Callable
 
 
@@ -29,20 +31,25 @@ class QueueOverflow(RuntimeAbort):
 def retry_with_backoff(
     fn: Callable[[], Any],
     *,
-    is_retryable: Callable[[BaseException], bool],
+    is_retryable: Callable[[Exception], bool],
     max_attempts: int = 5,
     base_delay: float = 0.1,
     max_delay: float = 5.0,
     sleep: Callable[[float], None] = time.sleep,
     rng: random.Random | None = None,
 ) -> Any:
+    if max_attempts < 1:
+        raise ValueError("max_attempts must be >= 1")
+    if base_delay < 0 or max_delay < 0:
+        raise ValueError("base_delay and max_delay must be non-negative")
     if rng is None:
         rng = random.Random()
-    last_exc: BaseException | None = None
+
+    last_exc: Exception | None = None
     for attempt in range(max_attempts):
         try:
             return fn()
-        except BaseException as exc:  # noqa: BLE001 — retryability decided by injected predicate
+        except Exception as exc:  # KeyboardInterrupt/SystemExit are BaseException — they propagate
             if not is_retryable(exc):
                 raise
             last_exc = exc
@@ -50,26 +57,30 @@ def retry_with_backoff(
                 break
             delay = rng.uniform(0, min(max_delay, base_delay * 2 ** attempt))
             sleep(delay)
-    raise RateLimitExhausted(
-        f"retryable call failed after {max_attempts} attempts"
-    ) from last_exc
+    raise RateLimitExhausted(f"retryable call failed after {max_attempts} attempts") from last_exc
 
 
 class BoundedWorkQueue:
+    """A bounded, depth-monitored FIFO queue. Thread-safe (concurrent workers can
+    share it without exceeding ``maxsize``); a full ``put`` raises
+    :class:`QueueOverflow` — fail-fast admission control, never unbounded growth."""
+
     def __init__(self, maxsize: int) -> None:
         self._maxsize = maxsize
-        self._items: list[Any] = []
+        self._items: deque[Any] = deque()
+        self._lock = threading.Lock()
 
     @property
     def depth(self) -> int:
-        return len(self._items)
+        with self._lock:
+            return len(self._items)
 
     def put(self, item: Any) -> None:
-        if self.depth >= self._maxsize:
-            raise QueueOverflow(
-                f"queue full at maxsize={self._maxsize}; rejecting item"
-            )
-        self._items.append(item)
+        with self._lock:
+            if len(self._items) >= self._maxsize:
+                raise QueueOverflow(f"queue full at maxsize={self._maxsize}; rejecting item")
+            self._items.append(item)
 
     def get(self) -> Any:
-        return self._items.pop(0)
+        with self._lock:
+            return self._items.popleft()

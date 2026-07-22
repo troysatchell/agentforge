@@ -19,7 +19,7 @@ pipeline — no network — plus the live-run wall-clock from
 
 - **Wall (deterministic work):** 6.463 ms for 100 attacks · **throughput 15,471 attacks/s**.
 - **Bottleneck (deterministic path):** `judge` — the six-oracle sweep, at ~0.039 ms/attack. Still ~400× cheaper than a single network round-trip.
-- **Process footprint:** the platform is stdlib-only at the data layer (SQLite `:memory:`/file, regex oracles); no heavyweight runtime. Memory is dominated by the exploit-store rows (a few hundred bytes each) and is linear in confirmed findings, not attack count (dedup on `sequence_hash`).
+- **Process footprint:** the platform is stdlib-only at the data layer (SQLite `:memory:`/file, regex oracles); no heavyweight runtime. Two distinct memory terms: **persisted** exploit-store rows grow linearly in *confirmed findings* (dedup on `sequence_hash`), not attack count; **in-flight** working memory (attack payloads + queued work) is separately bounded by the worker count and the `BoundedWorkQueue` capacity.
 
 **Read:** the platform's *own* compute is negligible. The deterministic-first design (oracles decide most verdicts with no model call) means the highest-volume work costs microseconds.
 
@@ -28,9 +28,9 @@ pipeline — no network — plus the live-run wall-clock from
 A full scan of the exploit store — `all()` + `cases_tested_by_category()` +
 `regressions()` — over a populated store:
 
-- **Measured: 0.517 ms / 100 records.** SLO budget: **≤ 2 s** for a full regression scan. **PASS** (>3,800× under budget).
-- The store is indexed on `severity`, `attack_category`, `target_version` (`sqlite_store.py`) and dedups on a UNIQUE `sequence_hash`, so scan cost is linear in rows and the SLO holds well past 10⁴ records.
-- *CI note:* the SLO is a one-line perf guard (scan-under-budget assertion) suitable for the regression job; it fails loudly if a future change makes the scan super-linear.
+- **Measured: 0.517 ms at 100 records.** SLO budget: **≤ 2 s** for a full regression scan. **PASS** at the measured size (>3,800× under budget).
+- The store is indexed on `severity`, `attack_category`, `target_version` (`sqlite_store.py`) and dedups on a UNIQUE `sequence_hash`; a full-table scan is expected to stay linear in rows, so the **projected** cost at 10⁴ records is well under budget — this is an extrapolation from the single measured size, not yet a benchmarked guarantee.
+- *CI note:* the SLO is a one-line perf guard (scan-under-budget assertion) for the regression job. Hardening follow-up: assert the budget at several dataset sizes (10² / 10³ / 10⁴) so super-linear growth is actually caught rather than assumed.
 
 ## Load / stress — 100 consecutive attacks against the live target
 
@@ -41,7 +41,7 @@ Platform-level metrics from the captured live run (`evals/results/live-run.json`
 |---|---|
 | Agent orchestration latency (deterministic) | ~0.06 ms/attack (generate+judge+persist, measured above) |
 | **LLM call latency (Red Team, Kimi K2.6)** | **~20–40 s/attack** wall (dominant term — live generation + target HTTP round-trip; 6 attacks ≈ 3 min wall) |
-| Exploit-storage throughput | 15k+ records/s (measured) — never the bottleneck |
+| Deterministic pipeline throughput | 15,471 attacks/s (measured, 100-attack `run_load`, all stages) — the platform is never the bottleneck |
 | Cost / attack | ~$0.005 (live: $0.03024 / 6) |
 
 **The bottleneck at real scale is the Red Team LLM call**, not the platform. Every
@@ -52,18 +52,23 @@ generation dominates both spend and latency.
 ### Architectural change that addresses it
 
 Serial attacks are LLM-latency-bound, so wall-clock scales linearly with attack
-count. The fix is **concurrency with backpressure**, using the PERF1 primitives:
+count. The fix is **concurrency with fail-fast admission control**, using the
+PERF1 primitives:
 
-- Run K attack workers pulling from a **`BoundedWorkQueue`** (depth-monitored;
-  aborts with a typed `QueueOverflow` rather than growing without bound).
+- Run K attack workers pulling from a **`BoundedWorkQueue`** — depth-monitored,
+  **fail-fast**: a `put` at capacity raises a typed `QueueOverflow` (admission is
+  rejected; the queue never grows without bound). This is overload *shedding*,
+  not blocking backpressure.
 - Wrap each provider call in **`retry_with_backoff`** (full-jitter exponential
   backoff on 429s; `RateLimitExhausted` → Orchestrator halt after the cap).
-- Throughput then scales with K until the provider's own rate limit is the
-  ceiling — at which point backoff + the budget-halt loop keep the platform
-  stable instead of thrashing.
+- Throughput then scales with K until the provider's rate limit or the target's
+  capacity is the ceiling — at which point backoff, queue-overflow shedding, and
+  the budget-halt loop keep the platform stable instead of thrashing.
 
-This turns a ~50-minute serial 100-attack run into a `~50min / K` run, bounded by
-provider concurrency limits, with no change to the deterministic core.
+**Idealized** upper bound: a ~50-minute serial 100-attack run approaches
+`~50min / K`. Real speedup will be lower — throttled by provider concurrency
+limits, target capacity, retry backoff, and queue-overflow shedding — but the
+deterministic core is unchanged either way.
 
 ## The platform's own rate-limit / backoff (implemented — PERF1)
 

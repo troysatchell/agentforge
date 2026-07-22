@@ -35,7 +35,7 @@ class TraceHop:
 @dataclass(frozen=True)
 class EndToEndTrace:
     correlation_id: str
-    hops: list  # list[TraceHop]
+    hops: tuple  # tuple[TraceHop, ...]
     report: str | None
     all_valid: bool
 
@@ -53,20 +53,29 @@ def run_end_to_end(
     Each hop's payload is the model's JSON dump validated against its published
     schema; only a ``success`` verdict renders a report."""
     result = attack_fn(directive)
+    # Integrity: the attack must belong to this directive's campaign.
+    if result.correlation_id != directive.correlation_id:
+        raise ValueError("attack result correlation_id does not match the directive")
     ctx = OracleContext(result=result, authorized_scope=directive.authorized_scope)
     verdict = judge.adjudicate(ctx, correlation_id=directive.correlation_id)
+    if str(verdict.attack_id) != str(result.attack_id):
+        raise ValueError("verdict attack_id does not match the adjudicated result")
 
-    report = render_report(result, verdict) if verdict.outcome is Outcome.SUCCESS else None
+    is_success = verdict.outcome is Outcome.SUCCESS
+    report = render_report(result, verdict) if is_success else None
 
     hops = [
         _hop("orchestrator->redteam", _ORCHESTRATOR_TO_REDTEAM, directive, is_valid),
         _hop("redteam->judge", _REDTEAM_TO_JUDGE, result, is_valid),
-        _hop("judge->documentation", _JUDGE_TO_DOCUMENTATION, verdict, is_valid),
     ]
+    # The judge->documentation edge carries SUCCESS verdicts only — fail/partial
+    # verdicts never reach the Documentation agent.
+    if is_success:
+        hops.append(_hop("judge->documentation", _JUDGE_TO_DOCUMENTATION, verdict, is_valid))
 
     return EndToEndTrace(
         correlation_id=directive.correlation_id,
-        hops=hops,
+        hops=tuple(hops),
         report=report,
         all_valid=all(hop.valid for hop in hops),
     )
