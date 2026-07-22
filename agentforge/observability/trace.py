@@ -8,9 +8,10 @@ platform is unit-tested without Langfuse/network. Labels are PHI-free.
 
 from __future__ import annotations
 
+import base64
 from datetime import datetime
 from enum import Enum
-from typing import Callable, Protocol, runtime_checkable
+from typing import Any, Callable, Protocol, runtime_checkable
 
 from pydantic import Field
 
@@ -41,7 +42,22 @@ class AgentSpan(StrictModel):
 
 
 def phi_free_label(oracle_results: list[OracleResult]) -> str:
-    raise NotImplementedError("OBS-trace: phi_free_label not implemented yet")
+    """Compress oracle results into a PHI-free label carrying only each oracle's
+    id and *fired status* — never the raw ``evidence`` bytes.
+
+    ``fired`` maps ``True -> "fired"``, ``False -> "clear"``, ``None -> "n/a"``.
+    e.g. ``"cross_patient=fired;phi_pattern=clear;grounding_fabrication=n/a"``.
+    """
+    parts = []
+    for result in oracle_results:
+        if result.fired is True:
+            status = "fired"
+        elif result.fired is False:
+            status = "clear"
+        else:
+            status = "n/a"
+        parts.append(f"{result.oracle_id}={status}")
+    return ";".join(parts)
 
 
 @runtime_checkable
@@ -63,11 +79,34 @@ class CollectingEmitter:
         self.spans: list[AgentSpan] = []
 
     def emit(self, span: AgentSpan) -> None:
-        raise NotImplementedError("OBS-trace: CollectingEmitter.emit not implemented yet")
+        self.spans.append(span)
 
 
 def to_langfuse_generation(span: AgentSpan) -> dict:
-    raise NotImplementedError("OBS-trace: to_langfuse_generation not implemented yet")
+    """Map an :class:`AgentSpan` to a Langfuse *generation* payload.
+
+    Carries only what lives on the span — model, token usage, cost, and start
+    time — plus a ``metadata`` block that threads the ``correlation_id`` join key
+    and the agent/category/label dimensions. It is structurally PHI-free: an
+    AgentSpan has no raw-body field, so raw response content can never leak here.
+    """
+    metadata: dict[str, Any] = {
+        "correlation_id": span.correlation_id,
+        "agent": span.agent.value,
+        "attack_category": span.attack_category.value if span.attack_category else None,
+        "label": span.label,
+    }
+    return {
+        "model": span.model,
+        "startTime": span.started_at.isoformat(),
+        "usage": {
+            "input": span.input_tokens,
+            "output": span.output_tokens,
+            "unit": "TOKENS",
+            "totalCost": span.cost_usd,
+        },
+        "metadata": metadata,
+    }
 
 
 class LangfuseEmitter:
@@ -85,4 +124,15 @@ class LangfuseEmitter:
         self._secret_key = secret_key
 
     def emit(self, span: AgentSpan) -> None:
-        raise NotImplementedError("OBS-trace: LangfuseEmitter.emit not implemented yet")
+        generation = to_langfuse_generation(span)
+        url = f"{self._host.rstrip('/')}/api/public/ingestion"
+        headers: dict[str, Any] = {"content-type": "application/json"}
+        if self._public_key is not None and self._secret_key is not None:
+            token = base64.b64encode(
+                f"{self._public_key}:{self._secret_key}".encode()
+            ).decode()
+            headers["authorization"] = f"Basic {token}"
+        body: dict[str, Any] = {
+            "batch": [{"type": "generation-create", "body": generation}]
+        }
+        self._transport(url, headers, body)
