@@ -9,7 +9,7 @@ platform is unit-tested without Langfuse/network. Labels are PHI-free.
 from __future__ import annotations
 
 import base64
-from datetime import datetime
+from datetime import datetime, timedelta
 from enum import Enum
 from typing import Any, Callable, Protocol, runtime_checkable
 
@@ -33,10 +33,10 @@ class AgentSpan(StrictModel):
     correlation_id: str
     started_at: datetime
     model: str | None = None
-    input_tokens: int | None = None
-    output_tokens: int | None = None
+    input_tokens: int | None = Field(default=None, ge=0)
+    output_tokens: int | None = Field(default=None, ge=0)
     cost_usd: float | None = Field(default=None, ge=0)
-    latency_ms: float | None = None
+    latency_ms: float | None = Field(default=None, ge=0)
     attack_category: AttackCategory | None = None
     label: str | None = None
 
@@ -96,9 +96,19 @@ def to_langfuse_generation(span: AgentSpan) -> dict:
         "attack_category": span.attack_category.value if span.attack_category else None,
         "label": span.label,
     }
+    end_time = (
+        (span.started_at + timedelta(milliseconds=span.latency_ms)).isoformat()
+        if span.latency_ms is not None
+        else None
+    )
     return {
+        # traceId = the correlation_id so every agent generation links to the one
+        # trace that a verdict/report can be joined back to.
+        "traceId": span.correlation_id,
+        "name": f"agent:{span.agent.value}",
         "model": span.model,
         "startTime": span.started_at.isoformat(),
+        "endTime": end_time,
         "usage": {
             "input": span.input_tokens,
             "output": span.output_tokens,

@@ -20,6 +20,8 @@ class CostReport:
 
 
 def attribute_cost(spans: Iterable[AgentSpan], *, confirmed_findings: int) -> CostReport:
+    if confirmed_findings < 0:
+        raise ValueError("confirmed_findings must be non-negative")
     by_agent: dict[AgentName, float] = {}
     by_category: dict[AttackCategory, float] = {}
     total_usd = 0.0

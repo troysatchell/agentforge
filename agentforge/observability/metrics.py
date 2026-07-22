@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from collections import defaultdict
 from dataclasses import dataclass
+from datetime import datetime
 from typing import Iterable
 
 from agentforge.contracts.common import AttackCategory
@@ -72,6 +73,7 @@ def resilience_trend(records: Iterable[ExploitRecord]) -> ResilienceTrend:
     """
     totals: dict[str, int] = defaultdict(int)
     successes: dict[str, int] = defaultdict(int)
+    first_seen: dict[str, datetime] = {}
     for rec in records:
         version = rec.target_version
         if version is None:
@@ -79,10 +81,14 @@ def resilience_trend(records: Iterable[ExploitRecord]) -> ResilienceTrend:
         totals[version] += 1
         if rec.outcome is Outcome.SUCCESS:
             successes[version] += 1
+        if version not in first_seen or rec.adjudicated_at < first_seen[version]:
+            first_seen[version] = rec.adjudicated_at
 
-    by_version = [
-        (version, successes[version] / totals[version]) for version in sorted(totals)
-    ]
+    # Order by release CHRONOLOGY (first-adjudicated), not raw string order, so
+    # double-digit versions (v10 after v2) don't flip the delta; ties break on the
+    # version string for a stable order.
+    ordered = sorted(totals, key=lambda v: (first_seen[v], v))
+    by_version = [(version, successes[version] / totals[version]) for version in ordered]
 
     answerable = len(by_version) >= 2
     delta = by_version[-1][1] - by_version[0][1] if answerable else 0.0

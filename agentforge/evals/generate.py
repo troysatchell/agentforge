@@ -31,6 +31,8 @@ def to_eval_case(
     ``case_id`` defaults to a deterministic ``af-<category>-<hash>`` slug so the
     corpus follows the id==filename convention.
     """
+    if str(verdict.attack_id) != str(result.attack_id):
+        raise ValueError("verdict.attack_id does not match result.attack_id — refusing to combine")
     expected = ExpectedVerdict(
         outcome=verdict.outcome,
         severity=verdict.severity,
