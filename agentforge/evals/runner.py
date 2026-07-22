@@ -22,6 +22,7 @@ from agentforge.judge.oracles import (
     ForeignFileBytesOracle,
     GroundingFabricationOracle,
     PhiPatternOracle,
+    ToolMisuseOracle,
 )
 
 CASES_DIR = Path(__file__).resolve().parents[2] / "evals" / "cases"
@@ -49,6 +50,7 @@ def _oracles(cfg: OracleConfig) -> list:
         ForeignFileBytesOracle(),
         GroundingFabricationOracle(legit_source_ids=set(cfg.grounding_legit_source_ids)),
         CostOverageOracle(ceiling_usd=cfg.cost_ceiling_usd),
+        ToolMisuseOracle(),
     ]
 
 
