@@ -36,7 +36,23 @@ def retry_with_backoff(
     sleep: Callable[[float], None] = time.sleep,
     rng: random.Random | None = None,
 ) -> Any:
-    raise NotImplementedError("PERF1: retry_with_backoff not implemented yet")
+    if rng is None:
+        rng = random.Random()
+    last_exc: BaseException | None = None
+    for attempt in range(max_attempts):
+        try:
+            return fn()
+        except BaseException as exc:  # noqa: BLE001 — retryability decided by injected predicate
+            if not is_retryable(exc):
+                raise
+            last_exc = exc
+            if attempt == max_attempts - 1:
+                break
+            delay = rng.uniform(0, min(max_delay, base_delay * 2 ** attempt))
+            sleep(delay)
+    raise RateLimitExhausted(
+        f"retryable call failed after {max_attempts} attempts"
+    ) from last_exc
 
 
 class BoundedWorkQueue:
@@ -49,7 +65,11 @@ class BoundedWorkQueue:
         return len(self._items)
 
     def put(self, item: Any) -> None:
-        raise NotImplementedError("PERF1: BoundedWorkQueue.put not implemented yet")
+        if self.depth >= self._maxsize:
+            raise QueueOverflow(
+                f"queue full at maxsize={self._maxsize}; rejecting item"
+            )
+        self._items.append(item)
 
     def get(self) -> Any:
-        raise NotImplementedError("PERF1: BoundedWorkQueue.get not implemented yet")
+        return self._items.pop(0)
