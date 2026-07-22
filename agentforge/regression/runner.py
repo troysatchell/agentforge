@@ -13,11 +13,15 @@ The coding agent replaces the ``NotImplementedError`` bodies.
 
 from __future__ import annotations
 
+import uuid
 from dataclasses import dataclass
+from datetime import datetime, timezone
 
+from agentforge.contracts.directive import AuthorizedScope
 from agentforge.contracts.result import AttackResult
-from agentforge.contracts.verdict import Verdict
+from agentforge.contracts.verdict import Outcome, Verdict
 from agentforge.evals.case import EvalCase
+from agentforge.judge import OracleContext
 from agentforge.live_run import JudgeLike, TargetClientLike
 
 
@@ -45,9 +49,42 @@ def reissue(
     access_token: str,
     correlation_id: str,
 ) -> RegressionOutcome:
-    raise NotImplementedError
+    """Re-fire a persisted case's bytes at the live target and let the Judge decide.
+
+    The re-issuable ``input_sequence`` is sourced from ``case`` (the store holds
+    only a ``sequence_hash``, no bytes). The LIVE response — never the stale
+    ``recorded_response`` — is what the injected Judge adjudicates. The runner
+    grades nothing itself: the returned ``verdict`` is exactly the Judge's object.
+    """
+    response = target_client.execute(access_token=access_token, input_sequence=case.input_sequence)
+    result = AttackResult(
+        attack_id=uuid.uuid4(),
+        correlation_id=correlation_id,
+        attack_category=case.attack_category,
+        owasp_mapping=case.owasp_mapping,
+        sequence_hash=case.case_id,
+        input_sequence=case.input_sequence,
+        target_response=response,
+        executed_at=datetime.now(timezone.utc),
+    )
+    ctx = OracleContext(
+        result=result,
+        authorized_scope=AuthorizedScope(authorized_patient_uuid=case.authorized_patient_uuid),
+    )
+    verdict = judge.adjudicate(ctx, correlation_id=correlation_id)
+    return RegressionOutcome(
+        case_id=case.case_id,
+        reproduced=verdict.outcome == Outcome.SUCCESS,
+        predicate_fired=verdict.predicate_fired is not None,
+        predicate=verdict.predicate_fired,
+        verdict=verdict,
+        attack_result=result,
+    )
 
 
 def gate_red_proof(outcome: RegressionOutcome) -> None:
     """Raise :class:`RegressionNotReproduced` unless the exploit reproduced."""
-    raise NotImplementedError
+    if not outcome.reproduced:
+        raise RegressionNotReproduced(
+            f"regression {outcome.case_id!r} did not re-fire its success predicate"
+        )
