@@ -135,6 +135,38 @@
   .note{color:var(--muted);font-size:12.5px;margin-top:18px;max-width:70ch;line-height:1.6}
   .foot{margin-top:40px;padding-top:20px;border-top:1px solid var(--line);font-family:var(--mono);font-size:11px;color:var(--dim)}
   .foot .phi{color:var(--held)}
+
+  /* CON1 · critical human-gate hero */
+  .gatebanner{display:none;align-items:center;gap:14px;border:1px solid rgba(255,93,93,.5);
+    background:linear-gradient(90deg,rgba(255,93,93,.15),rgba(255,93,93,.03));border-radius:12px;padding:14px 18px;margin-bottom:22px}
+  .gatebanner.on{display:flex;animation:in .3s ease}
+  .gatebanner .ic{font-size:19px;filter:drop-shadow(0 0 8px rgba(255,93,93,.6))}
+  .gatebanner .txt{flex:1}.gatebanner .txt b{color:var(--breach);font-size:14px}
+  .gatebanner .txt .s{display:block;font-size:11.5px;color:var(--muted);margin-top:3px;line-height:1.5}
+  .gatebanner .jump{font-family:var(--mono);font-size:11px;color:var(--breach);border:1px solid rgba(255,93,93,.5);
+    border-radius:7px;padding:8px 14px;cursor:pointer;background:transparent;flex:none}
+  .gatebanner .jump:hover{background:rgba(255,93,93,.1)}
+  /* CON2 · orchestrator decision ticker */
+  .ticker{display:flex;align-items:center;gap:11px;font-family:var(--mono);font-size:11.5px;color:var(--muted);
+    border:1px solid var(--line);border-radius:10px;background:var(--panel);padding:12px 16px;margin-bottom:22px;min-height:42px}
+  .ticker .tag{font-size:9px;letter-spacing:.13em;text-transform:uppercase;color:var(--dim);flex:none}
+  .ticker .arw{color:var(--accent);flex:none}
+  .ticker .msg2{color:var(--text)}.ticker .msg2.halt{color:var(--partial)}.ticker .msg2.done{color:var(--held)}
+  /* CON3 · per-agent cost */
+  .agcost{margin-top:15px}
+  .agrow{display:flex;align-items:center;gap:10px;padding:4px 0;font-family:var(--mono);font-size:11px}
+  .agrow .an{width:104px;flex:none;color:var(--muted)}.agrow .an.det{color:var(--info)}
+  .agrow .at{flex:1;height:5px;border-radius:3px;background:var(--panel2);overflow:hidden}
+  .agrow .at i{display:block;height:100%;background:linear-gradient(90deg,var(--accent-dim),var(--accent));transition:.4s}
+  .agrow .av{width:66px;text-align:right;color:var(--dim)}
+  .cpf{display:flex;justify-content:space-between;font-family:var(--mono);font-size:11.5px;margin-top:13px;padding-top:11px;border-top:1px solid var(--line)}
+  .cpf b{color:var(--accent)}
+  /* CON1 · approve/hold */
+  .fact{display:flex;gap:7px;margin-top:9px}
+  .approve,.hold{font-family:var(--mono);font-size:10px;border-radius:6px;padding:5px 11px;cursor:pointer;border:1px solid var(--line2);background:transparent}
+  .approve{color:var(--held);border-color:rgba(67,211,146,.45)}.approve:hover{background:rgba(67,211,146,.1)}
+  .hold{color:var(--muted)}.hold:hover{border-color:var(--line2)}
+  .find.approved{opacity:.55}.approvedtag{font-family:var(--mono);font-size:10px;color:var(--held);white-space:nowrap}
 </style>
 </head>
 <body>
@@ -173,7 +205,18 @@
     </div>
   </div>
 
+  <!-- CON1 · critical human-gate hero -->
+  <div class="gatebanner" id="gatebanner">
+    <span class="ic">⚠</span>
+    <div class="txt"><b id="gatetitle">1 CRITICAL finding awaiting your approval</b>
+      <span class="s">The platform holds critical-severity findings for a human before the Documentation agent may file them — the trust boundary where autonomy stops and asks you.</span></div>
+    <button class="jump" id="gatejump">Review ↓</button>
+  </div>
+
   <div class="kpis" id="kpis"></div>
+
+  <!-- CON2 · orchestrator decision ticker -->
+  <div class="ticker" id="ticker"><span class="tag">Orchestrator</span><span class="arw">▸</span><span class="msg2" id="tickermsg">idle — awaiting a campaign.</span></div>
 
   <div class="main">
     <div>
@@ -193,9 +236,11 @@
       </div>
       <div class="card"><h3>Coverage · 6 categories</h3><div id="cov"></div></div>
       <div class="card">
-        <h3>Cost · orchestrator halt line</h3>
-        <div class="costline"><b id="costnow">$0.000</b><span>/ $5.00 budget</span></div>
+        <h3>Cost · per agent · orchestrator halt line</h3>
+        <div class="costline"><b id="costnow">$0.000</b><span>/ $<span id="budgetlbl">5.00</span> budget</span></div>
         <div class="meter"><i id="costbar" style="width:0"></i></div>
+        <div class="agcost" id="agcost"></div>
+        <div class="cpf"><span>cost / confirmed finding</span><b id="cpf">—</b></div>
       </div>
     </div>
   </div>
@@ -222,16 +267,17 @@ const AGENTS=[{k:"orchestrator",r:"coordination",nm:"Orchestrator",md:"determini
 const $=s=>document.querySelector(s), el=(t,c,h)=>{const e=document.createElement(t);if(c)e.className=c;if(h!=null)e.innerHTML=h;return e;};
 const BUDGET=5.0;
 let running=false, selected=new Set(CATS);
-const live={seen:0,total:0,cost:0,b:{success:0,partial:0,fail:0},cov:{},findings:[]};
+const live={seen:0,total:0,cost:0,b:{success:0,partial:0,fail:0},cov:{},findings:[],approved:new Set(),agcost:{red_team:0,judge:0,documentation:0},budget:5};
 
 function initChips(){const c=$("#chips");CATS.forEach(k=>{const ch=el("span","chip on",CAT[k]);ch.onclick=()=>{if(running)return;ch.classList.toggle("on");ch.classList.contains("on")?selected.add(k):selected.delete(k);};c.appendChild(ch);});}
 function initStatic(){
   const p=$("#pipe");AGENTS.forEach((a,i)=>{p.appendChild(el("div","node "+a.c,`<div class="r">${a.r}</div><div class="nm">${a.nm}</div><div class="md">${a.md}</div>`));if(a.k==="red_team")p.appendChild(el("span","bound","⟂"));else if(i<AGENTS.length-1)p.appendChild(el("span","sep","→"));});
   const cov=$("#cov");CATS.forEach(k=>cov.appendChild(el("div","covrow",`<span class="nm">${CAT[k]}</span><span class="track" id="tk-${k}"><i class="s" style="width:0"></i><i class="p" style="width:0"></i><i class="f" style="width:0"></i></span><span class="n" id="cn-${k}">0</span>`)));
-  resetLive(); paint();
+  resetLive(); paint(); ticker("idle — awaiting a campaign.");
   $("#feed").innerHTML=`<div class="empty">Idle. Paste a launch-bound token, choose categories, and press <b style="color:var(--accent)">Start</b> to launch a live campaign against the Clinical Co-Pilot.</div>`;
 }
-function resetLive(){live.seen=0;live.total=0;live.cost=0;live.b={success:0,partial:0,fail:0};live.cov={};live.findings=[];CATS.forEach(k=>live.cov[k]={a:0,success:0,partial:0,fail:0});$("#feed").innerHTML="";$("#findings").innerHTML=`<div class="empty">No confirmed breaches yet.</div>`;$("#gatebadge").textContent="";}
+function resetLive(){live.seen=0;live.total=0;live.cost=0;live.b={success:0,partial:0,fail:0};live.cov={};live.findings=[];live.approved=new Set();live.agcost={red_team:0,judge:0,documentation:0};CATS.forEach(k=>live.cov[k]={a:0,success:0,partial:0,fail:0});$("#feed").innerHTML="";$("#findings").innerHTML=`<div class="empty">No confirmed breaches yet.</div>`;$("#gatebadge").textContent="";$("#gatebanner").classList.remove("on");ticker("campaign starting…");}
+function ticker(t,cls){const m=$("#tickermsg");if(m){m.textContent=t;m.className="msg2"+(cls?" "+cls:"");}}
 function kpis(){$("#kpis").innerHTML=
   `<div class="kpi"><div class="n">${live.seen}${live.total?`<span class="u">/${live.total}</span>`:""}</div><div class="l">attempts</div></div>
    <div class="kpi breach"><div class="n">${live.b.success}</div><div class="l">breaches</div></div>
@@ -243,7 +289,12 @@ function paint(){
   $("#vbar").innerHTML=`<i style="width:${b.success/t*100}%;background:var(--breach)"></i><i style="width:${b.partial/t*100}%;background:var(--partial)"></i><i style="width:${b.fail/t*100}%;background:var(--held)"></i>`;
   $("#v-s").textContent=b.success;$("#v-p").textContent=b.partial;$("#v-f").textContent=b.fail;
   CATS.forEach(k=>{const v=live.cov[k],tt=Math.max(v.a,1),tk=$("#tk-"+k);tk.children[0].style.width=v.success/tt*100+"%";tk.children[1].style.width=v.partial/tt*100+"%";tk.children[2].style.width=v.fail/tt*100+"%";$("#cn-"+k).textContent=v.a;});
-  $("#costbar").style.width=Math.min(100,live.cost/BUDGET*100)+"%";$("#costnow").textContent="$"+live.cost.toFixed(3);
+  $("#costbar").style.width=Math.min(100,live.cost/(live.budget||BUDGET)*100)+"%";$("#costnow").textContent="$"+live.cost.toFixed(3);
+  // CON3 · per-agent cost + cost-per-finding
+  const ag=[["red_team","Red Team",false],["judge","Judge",true],["documentation","Documentation",true]];
+  const mx=Math.max(live.agcost.red_team,live.agcost.judge,live.agcost.documentation,1e-9);
+  $("#agcost").innerHTML=ag.map(([k,nm,det])=>`<div class="agrow"><span class="an${det?" det":""}">${nm}${det?" · $0":""}</span><span class="at"><i style="width:${live.agcost[k]/mx*100}%"></i></span><span class="av">$${live.agcost[k].toFixed(4)}</span></div>`).join("");
+  $("#cpf").textContent=live.b.success?("$"+(live.cost/live.b.success).toFixed(4)):"—";
 }
 function addRow(a){const row=el("div","row");row.innerHTML=`<span class="seq">${String(a.seq).padStart(2,"0")}</span>
   <div><span class="cat">${CAT[a.category]||a.category}</span> <span class="sub">${a.subcategory}</span><div class="route">${a.route}</div>${a.predicate?`<div class="pred">${a.predicate}</div>`:""}</div>
@@ -251,6 +302,8 @@ function addRow(a){const row=el("div","row");row.innerHTML=`<span class="seq">${
   const f=$("#feed");f.insertBefore(row,f.firstChild);}
 function onAttempt(a){
   live.seen++;live.cost+=a.cost_usd||0;if(a.verdict in live.b)live.b[a.verdict]++;
+  const cba=a.cost_by_agent||{red_team:a.cost_usd||0,judge:0,documentation:0};
+  ["red_team","judge","documentation"].forEach(k=>live.agcost[k]+=cba[k]||0);
   const cv=live.cov[a.category];if(cv){cv.a++;if(a.verdict in cv)cv[a.verdict]++;}
   addRow(a);
   if(a.verdict==="success"){renderFinding(a);}
@@ -259,13 +312,28 @@ function onAttempt(a){
 function renderFinding(a){
   if(live.findings.length===0)$("#findings").innerHTML="";
   live.findings.push(a);
-  const gated=a.severity==="critical";
-  $("#findings").appendChild(el("div","find",
+  const gated=a.severity==="critical", fid="AF-LIVE-"+String(a.seq).padStart(3,"0");
+  const node=el("div","find",
     `<span class="sev ${a.severity}">${a.severity}</span>
-     <div><span class="fid">AF-LIVE-${String(a.seq).padStart(3,"0")}</span><div class="fsum">${a.predicate||""}</div><div class="fcat">${CAT[a.category]} · ${a.owasp||""}</div></div>
-     ${gated?'<span class="gate">⏸ awaiting approval</span>':'<span class="fcat">open</span>'}`));
-  const g=live.findings.filter(x=>x.severity==="critical").length;
-  $("#gatebadge").textContent=g?("· "+g+" gated"):"";
+     <div><span class="fid">${fid}</span><div class="fsum">${a.predicate||""}</div><div class="fcat">${CAT[a.category]} · ${a.owasp||""}</div>
+       ${gated?`<div class="fact"><button class="approve">✓ Approve &amp; file</button><button class="hold">Hold</button></div>`:""}</div>
+     ${gated?`<span class="gate" id="g-${fid}">⏸ awaiting approval</span>`:'<span class="fcat">open</span>'}`);
+  $("#findings").appendChild(node);
+  if(gated)node.querySelector(".approve").onclick=()=>approveFinding(fid,node);
+  updateGate();
+}
+function approveFinding(fid,node){
+  live.approved.add(fid);node.classList.add("approved");
+  const g=$("#g-"+fid);if(g)g.outerHTML='<span class="approvedtag">✓ approved · filed</span>';
+  const fact=node.querySelector(".fact");if(fact)fact.remove();
+  updateGate();
+}
+function updateGate(){
+  const pending=live.findings.filter(x=>x.severity==="critical"&&!live.approved.has("AF-LIVE-"+String(x.seq).padStart(3,"0")));
+  $("#gatebadge").textContent=pending.length?("· "+pending.length+" gated"):"";
+  const b=$("#gatebanner");
+  if(pending.length){b.classList.add("on");$("#gatetitle").textContent=pending.length+" CRITICAL finding"+(pending.length>1?"s":"")+" awaiting your approval";}
+  else b.classList.remove("on");
 }
 function setStatus(s,cls){$("#statustext").textContent=s;$("#dot").className="dot "+(cls||"");}
 function setRunning(on){running=on;$("#start").disabled=on;$("#stop").disabled=!on;document.querySelectorAll(".chip").forEach(c=>c.style.opacity=on?.5:1);}
@@ -289,11 +357,12 @@ async function start(){
       const {value,done}=await reader.read();if(done)break;
       buf+=dec.decode(value,{stream:true});let i;
       while((i=buf.indexOf("\n\n"))>=0){const {ev,data}=parseSSE(buf.slice(0,i));buf=buf.slice(i+2);
-        if(ev==="start"){live.total=data.total;paint();}
+        if(ev==="start"){live.total=data.total;if(data.budget_usd){live.budget=data.budget_usd;$("#budgetlbl").textContent=Number(data.budget_usd).toFixed(2);}ticker("targeting "+data.total+" categor"+(data.total===1?"y":"ies")+"…");paint();}
+        else if(ev==="decision"){ticker("▸ "+(CAT[data.category]||data.category)+" — "+data.reason);}
         else if(ev==="attempt"){onAttempt(data);}
-        else if(ev==="done"){setStatus("done · "+live.b.success+" breaches","done");msg("Campaign complete — "+data.attempts+" attempts, $"+data.cost_usd.toFixed(3)+" spent.","info");}
-        else if(ev==="stopped"){setStatus("stopped","stopped");msg("Campaign halted by operator.","info");}
-        else if(ev==="error"){setStatus("error");msg("Runner error: "+(data.message||"unknown"),"err");}
+        else if(ev==="done"){setStatus("done · "+live.b.success+" breaches","done");ticker("✓ "+(data.reason||"complete"),"done");msg("Campaign complete — "+data.attempts+" attempts, $"+data.cost_usd.toFixed(3)+" spent.","info");}
+        else if(ev==="stopped"){setStatus("stopped","stopped");ticker("■ "+(data.reason||"halted"),"halt");msg("Halted: "+(data.reason||"operator"),"info");}
+        else if(ev==="error"){setStatus("error");ticker("error","halt");msg("Runner error: "+(data.message||"unknown"),"err");}
       }
     }
   }catch(e){ msg("Stream interrupted.","err"); }
@@ -310,6 +379,7 @@ const SNIPPET=`(()=>{const g=v=>{if(/^Bearer /.test(v||'')){navigator.clipboard&
 $("#snippet").textContent=SNIPPET;
 $("#thtoggle").onclick=()=>{const h=$("#thelp");h.style.display=(h.style.display==="block")?"none":"block";};
 $("#copysnip").onclick=()=>{try{navigator.clipboard.writeText(SNIPPET);}catch(e){}$("#copysnip").textContent="copied ✓";setTimeout(()=>$("#copysnip").textContent="copy",1600);};
+$("#gatejump").onclick=()=>{document.querySelector('.tab[data-t="findings"]').click();$("#pane-findings").scrollIntoView({behavior:"smooth"});};
 initChips();initStatic();
 </script>
 </body>
