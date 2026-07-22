@@ -11,6 +11,8 @@ The coding agent replaces the ``NotImplementedError`` bodies.
 
 from __future__ import annotations
 
+import hashlib
+import json
 from typing import Any
 
 
@@ -19,8 +21,14 @@ class ReplayMiss(KeyError):
 
 
 def input_key(body: dict[str, Any]) -> str:
-    """Deterministic, order-insensitive key for a request body."""
-    raise NotImplementedError
+    """Deterministic, order-insensitive key for a request body.
+
+    A sha256 over the canonical JSON of ``body`` (sorted keys, tight
+    separators) — the same canonicalization the Red Team uses for
+    ``sequence_hash`` — so the key is independent of dict insertion order.
+    """
+    canonical = json.dumps(body, sort_keys=True, separators=(",", ":"))
+    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
 
 
 class InputKeyedReplayTransport:
@@ -32,4 +40,8 @@ class InputKeyedReplayTransport:
     def __call__(
         self, url: str, headers: dict[str, Any], body: dict[str, Any]
     ) -> dict[str, Any]:
-        raise NotImplementedError
+        key = input_key(body)
+        try:
+            return self._recordings[key]
+        except KeyError as exc:
+            raise ReplayMiss(key) from exc
