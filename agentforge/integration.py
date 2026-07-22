@@ -13,8 +13,15 @@ from typing import Any, Callable
 
 from agentforge.contracts.directive import AttackDirective
 from agentforge.contracts.result import AttackResult
-from agentforge.contracts.verdict import Verdict
-from agentforge.judge.base import OracleContext  # noqa: F401  (used by the impl)
+from agentforge.contracts.verdict import Outcome, Verdict
+from agentforge.judge.base import OracleContext
+
+# The frozen ``contracts/v1`` edges this trace threads through, in order. Each
+# ``$id`` is the absolute URI published in the corresponding schema file and
+# registered by the conftest ``is_valid`` fixture.
+_ORCHESTRATOR_TO_REDTEAM = "https://agentforge/contracts/v1/orchestrator_to_redteam.schema.json"
+_REDTEAM_TO_JUDGE = "https://agentforge/contracts/v1/redteam_to_judge.schema.json"
+_JUDGE_TO_DOCUMENTATION = "https://agentforge/contracts/v1/judge_to_documentation.schema.json"
 
 
 @dataclass(frozen=True)
@@ -41,4 +48,30 @@ def run_end_to_end(
     render_report: Callable[[AttackResult, Verdict], str],
     is_valid: Callable[[str, dict], bool],
 ) -> EndToEndTrace:
-    raise NotImplementedError("INT1: run_end_to_end not implemented yet")
+    """Drive directive -> attack -> verdict -> report through the frozen edges.
+
+    Each hop's payload is the model's JSON dump validated against its published
+    schema; only a ``success`` verdict renders a report."""
+    result = attack_fn(directive)
+    ctx = OracleContext(result=result, authorized_scope=directive.authorized_scope)
+    verdict = judge.adjudicate(ctx, correlation_id=directive.correlation_id)
+
+    report = render_report(result, verdict) if verdict.outcome is Outcome.SUCCESS else None
+
+    hops = [
+        _hop("orchestrator->redteam", _ORCHESTRATOR_TO_REDTEAM, directive, is_valid),
+        _hop("redteam->judge", _REDTEAM_TO_JUDGE, result, is_valid),
+        _hop("judge->documentation", _JUDGE_TO_DOCUMENTATION, verdict, is_valid),
+    ]
+
+    return EndToEndTrace(
+        correlation_id=directive.correlation_id,
+        hops=hops,
+        report=report,
+        all_valid=all(hop.valid for hop in hops),
+    )
+
+
+def _hop(edge: str, schema: str, model: Any, is_valid: Callable[[str, dict], bool]) -> TraceHop:
+    payload = model.model_dump(mode="json")
+    return TraceHop(edge=edge, schema=schema, payload=payload, valid=is_valid(schema, payload))
