@@ -17,7 +17,7 @@ from typing import Callable
 
 from agentforge.contracts.common import AttackCategory, OwaspMapping
 from agentforge.contracts.result import AttackResult, InputTurn, TargetResponse
-from agentforge.redteam.agent import KimiLike, RedTeam, _sequence_hash
+from agentforge.redteam.agent import KimiLike, RedTeam, RedTeamError, _sequence_hash
 
 
 class MultiTurnRunner:
@@ -26,6 +26,8 @@ class MultiTurnRunner:
     verdict-free ``AttackResult`` for the Judge."""
 
     def __init__(self, client: KimiLike, *, target_base_url: str, max_turns: int = 4) -> None:
+        if max_turns < 1:
+            raise ValueError("max_turns must be at least 1")
         self._client = client
         self._target_base_url = target_base_url
         self._max_turns = max_turns
@@ -52,20 +54,16 @@ class MultiTurnRunner:
         for turn_index in range(self._max_turns):
             user = self._build_prompt(category, transcript)
             raw = self._client.complete(system=system, user=user)
-            data = json.loads(raw)
+            route, payload, done = _parse_turn(raw)
 
-            turn = InputTurn(
-                turn_index=turn_index,
-                route=data["route"],
-                payload=data["payload"],
-            )
+            turn = InputTurn(turn_index=turn_index, route=route, payload=payload)
             response = target(turn)
 
             input_sequence.append(turn)
             transcript.append((turn, response))
             final_response = response
 
-            if data.get("done"):
+            if done:
                 break
 
         return AttackResult(
@@ -101,13 +99,8 @@ class MultiTurnRunner:
                     f"- turn {turn.turn_index}: route={turn.route} "
                     f"payload={json.dumps(turn.payload, sort_keys=True)} "
                     f"-> HTTP {response.http_status} "
-                    f"body={json.dumps(response.body, sort_keys=True)}"
+                    f"body={_clip(json.dumps(response.body, sort_keys=True))}"
                 )
-            _, last_response = transcript[-1]
-            lines.append(
-                "Previous target response body: "
-                f"{json.dumps(last_response.body, sort_keys=True)}"
-            )
 
         lines.append(
             "Respond with ONLY a single JSON object (no prose, no markdown fences) of the "
@@ -117,3 +110,42 @@ class MultiTurnRunner:
             "adjudication is performed separately by the Judge."
         )
         return "\n".join(lines)
+
+
+# Bound how much of any single target response body is echoed back into the next
+# turn's prompt, so a large or hostile response body can't blow up the prompt.
+_MAX_BODY_CHARS = 4000
+
+
+def _clip(text: str) -> str:
+    """Cap an echoed response body at ``_MAX_BODY_CHARS``, marking any truncation."""
+    if len(text) <= _MAX_BODY_CHARS:
+        return text
+    return text[:_MAX_BODY_CHARS] + f"...[+{len(text) - _MAX_BODY_CHARS} chars truncated]"
+
+
+def _parse_turn(raw: str) -> tuple[str, dict, bool]:
+    """Validate one model turn reply into ``(route, payload, done)``.
+
+    Requires a JSON object with a non-empty string ``route``, an object
+    ``payload``, and a BOOLEAN ``done``. Malformed output — including a string
+    ``"false"`` that would otherwise read as truthy and mis-terminate the
+    sequence — raises :class:`RedTeamError`, so the runner never advances a turn
+    on unvalidated model output."""
+    try:
+        data = json.loads(raw)
+    except (json.JSONDecodeError, TypeError) as exc:
+        raise RedTeamError(f"multi-turn model output is not valid JSON: {raw!r}") from exc
+    if not isinstance(data, dict):
+        raise RedTeamError(f"multi-turn model output must be a JSON object: {raw!r}")
+
+    route = data.get("route")
+    payload = data.get("payload")
+    done = data.get("done")
+    if not isinstance(route, str) or not route:
+        raise RedTeamError(f"multi-turn turn has an invalid 'route': {raw!r}")
+    if not isinstance(payload, dict):
+        raise RedTeamError(f"multi-turn turn has an invalid 'payload': {raw!r}")
+    if not isinstance(done, bool):
+        raise RedTeamError(f"multi-turn turn has a non-boolean 'done': {raw!r}")
+    return route, payload, done

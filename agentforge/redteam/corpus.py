@@ -147,9 +147,17 @@ def from_pyrit(record: dict, *, route: str) -> SeedAttack:
     if not value or not isinstance(value, str) or not value.strip():
         raise CorpusError("pyrit record has no non-empty 'value'")
 
-    harm_categories = record.get("harm_categories") or []
-    if isinstance(harm_categories, str):
-        harm_categories = [harm_categories]
+    raw_harm_categories = record.get("harm_categories")
+    if raw_harm_categories is None:
+        harm_categories = []
+    elif isinstance(raw_harm_categories, str):
+        harm_categories = [raw_harm_categories]
+    elif isinstance(raw_harm_categories, list):
+        harm_categories = raw_harm_categories
+    else:
+        raise CorpusError(
+            f"pyrit record has invalid 'harm_categories': {raw_harm_categories!r}"
+        )
 
     category: AttackCategory | None = None
     for harm in harm_categories:

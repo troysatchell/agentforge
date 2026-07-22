@@ -103,6 +103,14 @@ class Mutator:
         Reuses :meth:`RedTeam.assemble_result` (fresh ``attack_id``, recomputed
         ``sequence_hash``, no verdict) and tags it with ``parent_attack_id``
         lineage back to ``parent``."""
+        if (
+            plan.attack_category != parent.attack_category
+            or plan.owasp_mapping != parent.owasp_mapping
+        ):
+            raise RedTeamError(
+                "mutated child plan must retain the parent's attack_category and "
+                "owasp_mapping — the Red Team never re-classifies a mutated attack"
+            )
         child = self._redteam.assemble_result(
             plan,
             target_response,
