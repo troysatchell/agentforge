@@ -13,7 +13,7 @@ from datetime import datetime, timedelta
 from enum import Enum
 from typing import Any, Callable, Protocol, runtime_checkable
 
-from pydantic import Field
+from pydantic import Field, field_validator
 
 from agentforge.contracts.common import AttackCategory, OracleResult, StrictModel
 
@@ -39,6 +39,15 @@ class AgentSpan(StrictModel):
     latency_ms: float | None = Field(default=None, ge=0)
     attack_category: AttackCategory | None = None
     label: str | None = None
+
+    @field_validator("started_at")
+    @classmethod
+    def _require_timezone(cls, value: datetime) -> datetime:
+        # Naive timestamps break started_at ordering (naive vs aware compare
+        # raises) and make cross-agent joins ambiguous.
+        if value.tzinfo is None:
+            raise ValueError("started_at must be timezone-aware")
+        return value
 
 
 def phi_free_label(oracle_results: list[OracleResult]) -> str:

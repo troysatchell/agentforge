@@ -29,7 +29,9 @@ _LOOPBACK_HOSTS = {"localhost"}
 # permissive (brackets allowed, for IPv6 hosts) — trailing punctuation is stripped
 # and unparseable candidates are ignored in _classify.
 _URL_RE = re.compile(r"(?:https?|file)://[^\s\"'<>]+", re.IGNORECASE)
-_TRAILING = ".,;:!?)]}\"'"
+# Trailing punctuation to strip off a captured URL. Deliberately excludes ']' so a
+# syntactic IPv6 literal (http://[::1]) survives; a stray ']' rarely trails a URL.
+_TRAILING = ".,;:!?)\"'"
 
 # Fixed emission order so the evidence tally is deterministic across runs.
 _SIGNATURE_ORDER = ("ssrf_metadata", "file_scheme_fetch", "private_host", "loopback_host")
@@ -45,7 +47,9 @@ def _classify(url: str) -> str | None:
     try:
         parts = urlsplit(url)
         scheme = parts.scheme.lower()
-        host = (parts.hostname or "").lower()
+        # rstrip(".") folds a trailing-dot FQDN (metadata.google.internal.) — a
+        # known SSRF host-match bypass — onto its canonical form.
+        host = (parts.hostname or "").lower().rstrip(".")
     except ValueError:
         return None
     if scheme == "file":

@@ -5,7 +5,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Iterable
+from collections.abc import Iterable
 
 from agentforge.contracts.common import AttackCategory
 from agentforge.observability.trace import AgentName, AgentSpan
@@ -46,5 +46,7 @@ def attribute_cost(spans: Iterable[AgentSpan], *, confirmed_findings: int) -> Co
 
 def agent_order(spans: Iterable[AgentSpan], correlation_id: str) -> list[AgentName]:
     matching = [span for span in spans if span.correlation_id == correlation_id]
-    matching.sort(key=lambda span: span.started_at)
+    # started_at first; a canonical secondary key (agent) makes the order
+    # deterministic-by-content even for tied timestamps.
+    matching.sort(key=lambda span: (span.started_at, span.agent.value))
     return [span.agent for span in matching]

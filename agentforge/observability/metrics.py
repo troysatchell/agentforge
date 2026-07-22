@@ -6,10 +6,10 @@ Q1 coverage · Q2 pass/fail x version · Q3 resilience trend · Q4 open findings
 
 from __future__ import annotations
 
+import re
 from collections import defaultdict
+from collections.abc import Iterable
 from dataclasses import dataclass
-from datetime import datetime
-from typing import Iterable
 
 from agentforge.contracts.common import AttackCategory
 from agentforge.contracts.verdict import Outcome
@@ -63,6 +63,20 @@ def pass_fail_by_version(
     }
 
 
+_VERSION_CHUNK_RE = re.compile(r"(\d+)")
+
+
+def _natural_version_key(version: str) -> list[tuple[int, object]]:
+    """Natural-order key so 'v2' sorts before 'v10'. Digit runs compare as ints;
+    the (rank, value) tuples keep int and str chunks mutually comparable across
+    heterogeneous version formats."""
+    return [
+        (0, int(part)) if part.isdigit() else (1, part)
+        for part in _VERSION_CHUNK_RE.split(version)
+        if part
+    ]
+
+
 def resilience_trend(records: Iterable[ExploitRecord]) -> ResilienceTrend:
     """Q3 — overall success-rate per target_version, ordered by version.
 
@@ -73,7 +87,6 @@ def resilience_trend(records: Iterable[ExploitRecord]) -> ResilienceTrend:
     """
     totals: dict[str, int] = defaultdict(int)
     successes: dict[str, int] = defaultdict(int)
-    first_seen: dict[str, datetime] = {}
     for rec in records:
         version = rec.target_version
         if version is None:
@@ -81,13 +94,10 @@ def resilience_trend(records: Iterable[ExploitRecord]) -> ResilienceTrend:
         totals[version] += 1
         if rec.outcome is Outcome.SUCCESS:
             successes[version] += 1
-        if version not in first_seen or rec.adjudicated_at < first_seen[version]:
-            first_seen[version] = rec.adjudicated_at
 
-    # Order by release CHRONOLOGY (first-adjudicated), not raw string order, so
-    # double-digit versions (v10 after v2) don't flip the delta; ties break on the
-    # version string for a stable order.
-    ordered = sorted(totals, key=lambda v: (first_seen[v], v))
+    # Order by NATURAL version progression (v2 before v10) — release order by
+    # construction, independent of adjudication order (backfill-safe).
+    ordered = sorted(totals, key=_natural_version_key)
     by_version = [(version, successes[version] / totals[version]) for version in ordered]
 
     answerable = len(by_version) >= 2
