@@ -178,6 +178,8 @@ def test_empty_model_body_is_rejected() -> None:
     out = _agent(client).document(_verdict(), _result())
 
     assert out.status == "rejected"
+    # the rejection came from the empty model reply, not an earlier preflight gate
+    assert client.calls == 1
     reason = (out.reason or "").lower()
     assert "empty" in reason or "body" in reason
 

@@ -67,9 +67,23 @@ class SqliteExploitStore:
     def __init__(self, path: str = ":memory:") -> None:
         self._conn = sqlite3.connect(path)
         self._conn.execute(_SCHEMA)
+        self._migrate()
         for stmt in _INDEXES:
             self._conn.execute(stmt)
         self._conn.commit()
+
+    def _migrate(self) -> None:
+        """Bring a pre-existing DB up to the current schema.
+
+        ``CREATE TABLE IF NOT EXISTS`` leaves an older table untouched, so a
+        database written before ``cross_category`` existed would fail every
+        insert/select over ``_COLUMNS``. Add the column idempotently.
+        """
+        existing = {
+            row[1] for row in self._conn.execute("PRAGMA table_info(exploit_records)")
+        }
+        if "cross_category" not in existing:
+            self._conn.execute("ALTER TABLE exploit_records ADD COLUMN cross_category TEXT")
 
     def record(self, rec: ExploitRecord) -> bool:
         row = (

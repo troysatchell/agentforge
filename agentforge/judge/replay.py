@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+from copy import deepcopy
 from typing import Any
 
 
@@ -35,13 +36,17 @@ class InputKeyedReplayTransport:
     """Callable transport that replays recorded responses by input key."""
 
     def __init__(self, recordings: dict[str, dict[str, Any]]) -> None:
-        self._recordings = recordings
+        # Snapshot at construction so a later mutation of the caller's dict
+        # can't change what we replay — determinism is the whole point.
+        self._recordings = deepcopy(recordings)
 
     def __call__(
         self, url: str, headers: dict[str, Any], body: dict[str, Any]
     ) -> dict[str, Any]:
         key = input_key(body)
         try:
-            return self._recordings[key]
+            # Return a copy so a caller mutating the response can't corrupt a
+            # later identical replay.
+            return deepcopy(self._recordings[key])
         except KeyError as exc:
             raise ReplayMiss(key) from exc

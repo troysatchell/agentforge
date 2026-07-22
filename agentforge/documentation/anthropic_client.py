@@ -47,6 +47,11 @@ class AnthropicClient:
 
         if "error" in response:
             raise AnthropicError(f"Anthropic API returned an error: {response['error']!r}")
+        if response.get("stop_reason") == "max_tokens":
+            raise AnthropicError(
+                "Anthropic response was truncated (stop_reason=max_tokens); refusing "
+                "to hand an incomplete vuln report to the Documentation Agent"
+            )
         if "content" not in response:
             raise AnthropicError(f"Anthropic API response is missing 'content': {response!r}")
 

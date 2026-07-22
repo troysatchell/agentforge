@@ -97,6 +97,20 @@ def _fail_verdict() -> Verdict:
     )
 
 
+def _success_without_predicate_verdict() -> Verdict:
+    """A success outcome that names no fired predicate — NOT proof of reproduction."""
+    return Verdict(
+        verdict_id=uuid.uuid4(),
+        attack_id=uuid.uuid4(),
+        correlation_id="reg-1",
+        outcome=Outcome.SUCCESS,
+        predicate_fired=None,
+        severity=Severity.HIGH,
+        regression_flag=False,
+        adjudicated_at=FIXED_NOW,
+    )
+
+
 # --- re-firing the stored bytes -------------------------------------------
 
 
@@ -217,5 +231,21 @@ def test_gate_red_proof_raises_when_not_reproduced() -> None:
         access_token="t",
         correlation_id="reg-1",
     )
+    with pytest.raises(RegressionNotReproduced):
+        gate_red_proof(out)
+
+
+def test_gate_red_proof_raises_on_success_without_predicate() -> None:
+    """A bare SUCCESS with no fired predicate is not reproduction proof —
+    the red-proof gate must still refuse it."""
+    out = reissue(
+        _case(),
+        target_client=FakeTargetClient(LIVE),
+        judge=FakeJudge(_success_without_predicate_verdict()),
+        access_token="t",
+        correlation_id="reg-1",
+    )
+    assert out.reproduced is False
+    assert out.predicate_fired is False
     with pytest.raises(RegressionNotReproduced):
         gate_red_proof(out)

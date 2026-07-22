@@ -10,6 +10,7 @@ preserved.
 
 from __future__ import annotations
 
+import sqlite3
 import uuid
 from datetime import datetime, timezone
 
@@ -87,6 +88,29 @@ def test_sqlite_roundtrips_cross_category_none() -> None:
     store = SqliteExploitStore(":memory:")
     store.record(ExploitRecord.from_verdict(_verdict(cross_category=None), _result("hash-y")))
     assert store.all()[0].cross_category is None
+
+
+def test_sqlite_migrates_a_pre_cross_category_database(tmp_path) -> None:
+    """Reopening a DB written before the cross_category column adds it (idempotent
+    migration) so inserts/selects over the full column set keep working."""
+    path = str(tmp_path / "legacy.db")
+    # A legacy table with every column EXCEPT cross_category.
+    legacy = sqlite3.connect(path)
+    legacy.execute(
+        "CREATE TABLE exploit_records ("
+        "exploit_id TEXT PRIMARY KEY, correlation_id TEXT NOT NULL, attack_id TEXT NOT NULL, "
+        "sequence_hash TEXT NOT NULL, attack_category TEXT NOT NULL, severity TEXT NOT NULL, "
+        "outcome TEXT NOT NULL, predicate_fired TEXT, regression_flag INTEGER NOT NULL, "
+        "target_version TEXT, reproduction_ref TEXT, adjudicated_at TEXT NOT NULL)"
+    )
+    legacy.commit()
+    legacy.close()
+
+    store = SqliteExploitStore(path)  # must ALTER TABLE ADD COLUMN, not fail
+    assert store.record(
+        ExploitRecord.from_verdict(_verdict(cross_category="tool_misuse"), _result("hash-mig"))
+    )
+    assert store.all()[0].cross_category == "tool_misuse"
 
 
 # --- orchestrator: detail.cross_category ----------------------------------

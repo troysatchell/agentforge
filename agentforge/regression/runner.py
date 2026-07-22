@@ -72,10 +72,14 @@ def reissue(
         authorized_scope=AuthorizedScope(authorized_patient_uuid=case.authorized_patient_uuid),
     )
     verdict = judge.adjudicate(ctx, correlation_id=correlation_id)
+    # Reproduction requires PROOF: a success verdict whose success predicate
+    # actually re-fired. A bare Outcome.SUCCESS with predicate_fired=None is not
+    # proof, so it must not pass gate_red_proof (the GateRedProof contract).
+    predicate_fired = verdict.predicate_fired is not None
     return RegressionOutcome(
         case_id=case.case_id,
-        reproduced=verdict.outcome == Outcome.SUCCESS,
-        predicate_fired=verdict.predicate_fired is not None,
+        reproduced=verdict.outcome == Outcome.SUCCESS and predicate_fired,
+        predicate_fired=predicate_fired,
         predicate=verdict.predicate_fired,
         verdict=verdict,
         attack_result=result,
