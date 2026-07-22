@@ -138,6 +138,10 @@ def _parse_turn(raw: str) -> tuple[str, dict, bool]:
         raise RedTeamError(f"multi-turn model output is not valid JSON: {raw!r}") from exc
     if not isinstance(data, dict):
         raise RedTeamError(f"multi-turn model output must be a JSON object: {raw!r}")
+    if set(data) != {"route", "payload", "done"}:
+        raise RedTeamError(
+            f"multi-turn turn must contain exactly route, payload, and done: {raw!r}"
+        )
 
     route = data.get("route")
     payload = data.get("payload")
