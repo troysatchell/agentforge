@@ -265,6 +265,8 @@ const CAT={prompt_injection:"Prompt injection",data_exfiltration:"Data exfiltrat
 const CATS=["prompt_injection","data_exfiltration","state_corruption","tool_misuse","denial_of_service","identity_role_exploitation"];
 const AGENTS=[{k:"orchestrator",r:"coordination",nm:"Orchestrator",md:"deterministic",c:"det"},{k:"red_team",r:"offensive",nm:"Red Team",md:"Kimi K2.6",c:"ai"},{k:"target",r:"target",nm:"Clinical Co-Pilot",md:"live HTTP",c:"det"},{k:"judge",r:"adjudication",nm:"Judge",md:"deterministic",c:"det"},{k:"documentation",r:"reporting",nm:"Documentation",md:"Opus 4.8 + human",c:"ai"}];
 const $=s=>document.querySelector(s), el=(t,c,h)=>{const e=document.createElement(t);if(c)e.className=c;if(h!=null)e.innerHTML=h;return e;};
+// Escape every model-/target-influenced string before it enters innerHTML (untrusted).
+const esc=s=>String(s==null?"":s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 const BUDGET=5.0;
 let running=false, selected=new Set(CATS);
 const live={seen:0,total:0,cost:0,b:{success:0,partial:0,fail:0},cov:{},findings:[],approved:new Set(),agcost:{red_team:0,judge:0,documentation:0},budget:5};
@@ -276,7 +278,7 @@ function initStatic(){
   resetLive(); paint(); ticker("idle — awaiting a campaign.");
   $("#feed").innerHTML=`<div class="empty">Idle. Paste a launch-bound token, choose categories, and press <b style="color:var(--accent)">Start</b> to launch a live campaign against the Clinical Co-Pilot.</div>`;
 }
-function resetLive(){live.seen=0;live.total=0;live.cost=0;live.b={success:0,partial:0,fail:0};live.cov={};live.findings=[];live.approved=new Set();live.agcost={red_team:0,judge:0,documentation:0};CATS.forEach(k=>live.cov[k]={a:0,success:0,partial:0,fail:0});$("#feed").innerHTML="";$("#findings").innerHTML=`<div class="empty">No confirmed breaches yet.</div>`;$("#gatebadge").textContent="";$("#gatebanner").classList.remove("on");ticker("campaign starting…");}
+function resetLive(){live.seen=0;live.total=0;live.cost=0;live.b={success:0,partial:0,fail:0};live.cov={};live.findings=[];live.approved=new Set();live.agcost={red_team:0,judge:0,documentation:0};live.budget=5;CATS.forEach(k=>live.cov[k]={a:0,success:0,partial:0,fail:0});$("#feed").innerHTML="";$("#findings").innerHTML=`<div class="empty">No confirmed breaches yet.</div>`;$("#gatebadge").textContent="";$("#gatebanner").classList.remove("on");$("#budgetlbl").textContent="5.00";ticker("campaign starting…");}
 function ticker(t,cls){const m=$("#tickermsg");if(m){m.textContent=t;m.className="msg2"+(cls?" "+cls:"");}}
 function kpis(){$("#kpis").innerHTML=
   `<div class="kpi"><div class="n">${live.seen}${live.total?`<span class="u">/${live.total}</span>`:""}</div><div class="l">attempts</div></div>
@@ -297,8 +299,8 @@ function paint(){
   $("#cpf").textContent=live.b.success?("$"+(live.cost/live.b.success).toFixed(4)):"—";
 }
 function addRow(a){const row=el("div","row");row.innerHTML=`<span class="seq">${String(a.seq).padStart(2,"0")}</span>
-  <div><span class="cat">${CAT[a.category]||a.category}</span> <span class="sub">${a.subcategory}</span><div class="route">${a.route}</div>${a.predicate?`<div class="pred">${a.predicate}</div>`:""}</div>
-  <div class="r"><span class="http">HTTP ${a.http_status}</span><span class="pill ${a.verdict}">${a.verdict==="fail"?"held":a.verdict}</span></div>`;
+  <div><span class="cat">${esc(CAT[a.category]||a.category)}</span> <span class="sub">${esc(a.subcategory)}</span><div class="route">${esc(a.route)}</div>${a.predicate?`<div class="pred">${esc(a.predicate)}</div>`:""}</div>
+  <div class="r"><span class="http">HTTP ${esc(a.http_status)}</span><span class="pill ${esc(a.verdict)}">${a.verdict==="fail"?"held":esc(a.verdict)}</span></div>`;
   const f=$("#feed");f.insertBefore(row,f.firstChild);}
 function onAttempt(a){
   live.seen++;live.cost+=a.cost_usd||0;if(a.verdict in live.b)live.b[a.verdict]++;
@@ -314,9 +316,9 @@ function renderFinding(a){
   live.findings.push(a);
   const gated=a.severity==="critical", fid="AF-LIVE-"+String(a.seq).padStart(3,"0");
   const node=el("div","find",
-    `<span class="sev ${a.severity}">${a.severity}</span>
-     <div><span class="fid">${fid}</span><div class="fsum">${a.predicate||""}</div><div class="fcat">${CAT[a.category]} · ${a.owasp||""}</div>
-       ${gated?`<div class="fact"><button class="approve">✓ Approve &amp; file</button><button class="hold">Hold</button></div>`:""}</div>
+    `<span class="sev ${esc(a.severity)}">${esc(a.severity)}</span>
+     <div><span class="fid">${fid}</span><div class="fsum">${esc(a.predicate||"")}</div><div class="fcat">${esc(CAT[a.category])} · ${esc(a.owasp||"")}</div>
+       ${gated?`<div class="fact"><button class="approve">✓ Approve</button><button class="hold">Hold</button></div>`:""}</div>
      ${gated?`<span class="gate" id="g-${fid}">⏸ awaiting approval</span>`:'<span class="fcat">open</span>'}`);
   $("#findings").appendChild(node);
   if(gated)node.querySelector(".approve").onclick=()=>approveFinding(fid,node);
@@ -324,7 +326,7 @@ function renderFinding(a){
 }
 function approveFinding(fid,node){
   live.approved.add(fid);node.classList.add("approved");
-  const g=$("#g-"+fid);if(g)g.outerHTML='<span class="approvedtag">✓ approved · filed</span>';
+  const g=$("#g-"+fid);if(g)g.outerHTML='<span class="approvedtag">✓ approved (operator)</span>';
   const fact=node.querySelector(".fact");if(fact)fact.remove();
   updateGate();
 }
@@ -357,7 +359,7 @@ async function start(){
       const {value,done}=await reader.read();if(done)break;
       buf+=dec.decode(value,{stream:true});let i;
       while((i=buf.indexOf("\n\n"))>=0){const {ev,data}=parseSSE(buf.slice(0,i));buf=buf.slice(i+2);
-        if(ev==="start"){live.total=data.total;if(data.budget_usd){live.budget=data.budget_usd;$("#budgetlbl").textContent=Number(data.budget_usd).toFixed(2);}ticker("targeting "+data.total+" categor"+(data.total===1?"y":"ies")+"…");paint();}
+        if(ev==="start"){live.total=data.total;if(data.budget_usd!=null){live.budget=data.budget_usd;$("#budgetlbl").textContent=Number(data.budget_usd).toFixed(2);}ticker("targeting "+data.total+" categor"+(data.total===1?"y":"ies")+"…");paint();}
         else if(ev==="decision"){ticker("▸ "+(CAT[data.category]||data.category)+" — "+data.reason);}
         else if(ev==="attempt"){onAttempt(data);}
         else if(ev==="done"){setStatus("done · "+live.b.success+" breaches","done");ticker("✓ "+(data.reason||"complete"),"done");msg("Campaign complete — "+data.attempts+" attempts, $"+data.cost_usd.toFixed(3)+" spent.","info");}

@@ -47,25 +47,36 @@ def test_emits_a_decision_before_each_attempt_and_per_agent_cost(monkeypatch):
     STATE.stop = False
     events = _drive(categories=["tool_misuse"])
     kinds = [e["event"] for e in events]
-    assert kinds[0] == "start"
-    decision = next(e for e in events if e["event"] == "decision")
-    assert decision["data"]["category"] == "tool_misuse" and decision["data"]["reason"]
-    attempt = next(e for e in events if e["event"] == "attempt")
-    assert attempt["data"]["cost_by_agent"]["red_team"] == 0.01
-    assert kinds[-1] == "done" and events[-1]["data"]["reason"]
+    assert kinds[0] == "start" and kinds[-1] == "done"
+    # a decision precedes its attempt
+    dec_i = kinds.index("decision")
+    att_i = kinds.index("attempt")
+    assert dec_i < att_i
+    decision = events[dec_i]
+    assert decision["data"]["category"] == "tool_misuse"
+    assert decision["data"]["reason"]
+    # per-agent cost attribution on the attempt
+    assert events[att_i]["data"]["cost_by_agent"]["red_team"] == 0.01
+    # terminal done carries a reason
+    assert events[-1]["data"]["reason"]
 
 
 def test_halts_on_cost_without_signal(monkeypatch):
     monkeypatch.setattr(runner, "_run_one", _canned(verdict="fail", cost=1.0))
     STATE.stop = False
     events = _drive(budget_usd=0.5)  # first held attempt blows the budget with no breach
-    stop = next((e for e in events if e["event"] == "stopped"), None)
-    assert stop is not None
-    assert "cost" in stop["data"]["reason"].lower()
+    kinds = [e["event"] for e in events]
+    stop_i = kinds.index("stopped")
+    assert "cost" in events[stop_i]["data"]["reason"].lower()
+    # the over-budget attempt is streamed BEFORE the halt, and the halt is terminal
+    assert "attempt" in kinds[:stop_i]
+    assert stop_i == len(kinds) - 1  # nothing after the halt
 
 
 def test_does_not_halt_when_a_breach_is_found(monkeypatch):
     monkeypatch.setattr(runner, "_run_one", _canned(verdict="success", severity="critical", cost=1.0))
     STATE.stop = False
     events = _drive(categories=["tool_misuse"], budget_usd=0.5)
-    assert events[-1]["event"] == "done"  # a breach is signal — no cost-without-signal halt
+    kinds = [e["event"] for e in events]
+    assert "stopped" not in kinds  # a breach is signal — no cost-without-signal halt
+    assert kinds[-1] == "done"

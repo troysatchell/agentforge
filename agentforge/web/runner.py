@@ -195,9 +195,14 @@ def _cost_by_agent(attempt: dict) -> dict[str, float]:
 
 
 def _next_reason(category: str, coverage: dict[str, int]) -> str:
-    """Why the Orchestrator targets this category next — coverage-gap driven (CON2)."""
+    """Why this category is targeted next (CON2). The console runs a fixed
+    coverage sweep — one probe per selected category; the deterministic
+    Orchestrator's least-covered prioritization lives in
+    ``agentforge/orchestrator.py``."""
     n = coverage.get(category, 0)
-    return f"coverage gap — first probe of {category}" if n == 0 else f"least-covered — {category} ({n} prior)"
+    if n == 0:
+        return f"coverage sweep — {category} not yet probed this run"
+    return f"re-probe — {category} ({n} prior attempt{'s' if n != 1 else ''})"
 
 
 async def run_campaign(
@@ -233,6 +238,10 @@ async def run_campaign(
             if attempt["verdict"] == "success":
                 breaches += 1
             yield {"event": "attempt", "data": attempt}
+            if STATE.stop:  # operator halt wins over a same-iteration cost halt
+                yield {"event": "stopped",
+                       "data": {"at": i, "cost_usd": round(total, 5), "reason": "operator halt"}}
+                return
             if total >= budget_usd and breaches == 0:
                 yield {"event": "stopped",
                        "data": {"at": i, "cost_usd": round(total, 5),
