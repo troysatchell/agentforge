@@ -22,7 +22,7 @@ A = AttackCategory("prompt_injection")
 B = AttackCategory("data_exfiltration")
 
 
-def _res(case_id: str, category: AttackCategory, passed: bool) -> EvalResult:
+def _res(case_id: str, category: AttackCategory, *, passed: bool) -> EvalResult:
     exp = ExpectedVerdict(outcome=Outcome.FAIL, severity=Severity.LOW, fired_oracle_ids=[])
     return EvalResult(
         case_id=case_id,
@@ -36,7 +36,7 @@ def _res(case_id: str, category: AttackCategory, passed: bool) -> EvalResult:
 
 
 def test_summarize_counts_and_overall_accuracy() -> None:
-    results = [_res("a", A, True), _res("b", A, False), _res("c", B, True), _res("d", B, True)]
+    results = [_res("a", A, passed=True), _res("b", A, passed=False), _res("c", B, passed=True), _res("d", B, passed=True)]
     s = summarize_accuracy(results)
     assert isinstance(s, AccuracySummary)
     assert s.total == 4
@@ -45,7 +45,7 @@ def test_summarize_counts_and_overall_accuracy() -> None:
 
 
 def test_summarize_per_category_accuracy() -> None:
-    results = [_res("a", A, True), _res("b", A, False), _res("c", B, True), _res("d", B, True)]
+    results = [_res("a", A, passed=True), _res("b", A, passed=False), _res("c", B, passed=True), _res("d", B, passed=True)]
     s = summarize_accuracy(results)
     assert s.by_category[A] == 0.5
     assert s.by_category[B] == 1.0
@@ -63,6 +63,6 @@ def test_accuracy_drift_is_current_minus_baseline() -> None:
     # current worse than baseline -> negative drift (accuracy regressed)
     assert accuracy_drift(0.90, 0.75) == -0.15
     # improvement -> positive
-    assert round(accuracy_drift(0.50, 0.80), 10) == 0.30
+    assert accuracy_drift(0.50, 0.80) == 0.30
     # unchanged
     assert accuracy_drift(0.80, 0.80) == 0.0
