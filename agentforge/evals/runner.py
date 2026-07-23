@@ -100,3 +100,48 @@ def run_case(case: EvalCase) -> EvalResult:
 def run_suite(cases_dir: str | Path = CASES_DIR) -> list[EvalResult]:
     """Run every case in ``cases_dir`` (sorted by filename) — the reproducible gate."""
     return [run_case(load_case(p)) for p in sorted(Path(cases_dir).glob("*.json"))]
+
+
+@dataclass(frozen=True)
+class AccuracySummary:
+    """Aggregate Judge accuracy over a batch of replayed eval cases."""
+
+    total: int
+    passed: int
+    accuracy: float
+    by_category: dict[AttackCategory, float]
+
+
+def summarize_accuracy(results: list[EvalResult]) -> AccuracySummary:
+    """Roll a batch of :class:`EvalResult` up into overall + per-category pass fractions."""
+    total = len(results)
+    passed = sum(1 for r in results if r.passed)
+    accuracy = passed / total if total else 0.0
+
+    per_category_total: dict[AttackCategory, int] = {}
+    per_category_passed: dict[AttackCategory, int] = {}
+    for r in results:
+        per_category_total[r.attack_category] = per_category_total.get(r.attack_category, 0) + 1
+        per_category_passed[r.attack_category] = per_category_passed.get(
+            r.attack_category, 0
+        ) + (1 if r.passed else 0)
+    by_category = {
+        category: per_category_passed[category] / count
+        for category, count in per_category_total.items()
+    }
+
+    return AccuracySummary(
+        total=total,
+        passed=passed,
+        accuracy=accuracy,
+        by_category=by_category,
+    )
+
+
+def accuracy_drift(baseline_accuracy: float, current_accuracy: float) -> float:
+    """Signed change in accuracy: ``current - baseline`` (negative == regression).
+
+    Rounded to 10 decimals to shed IEEE-754 subtraction noise so equal accuracies
+    report exactly ``0.0`` and small drifts compare cleanly.
+    """
+    return round(current_accuracy - baseline_accuracy, 10)
