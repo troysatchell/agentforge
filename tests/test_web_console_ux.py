@@ -10,7 +10,7 @@ from __future__ import annotations
 import asyncio
 
 from agentforge.web import runner
-from agentforge.web.runner import STATE, _cost_by_agent, _next_reason, run_campaign
+from agentforge.web.runner import STATE, _attempt_trace, _cost_by_agent, _next_reason, run_campaign
 
 
 def test_cost_by_agent_attributes_generation_to_red_team():
@@ -23,6 +23,20 @@ def test_cost_by_agent_attributes_generation_to_red_team():
 
 def test_next_reason_names_the_targeted_category():
     assert "tool_misuse" in _next_reason("tool_misuse", {"tool_misuse": 0})
+
+
+def test_attempt_trace_has_four_hops_with_cost_and_latency():
+    tr = _attempt_trace(category="tool_misuse", gen_cost=0.02, gen_ms=1200.0,
+                        route="/api/copilot/turn", status=200, fire_ms=340.0,
+                        verdict="success", predicate="tool_misuse fired: ssrf")
+    assert [h["agent"] for h in tr] == ["orchestrator", "red_team", "target", "judge"]
+    rt = next(h for h in tr if h["agent"] == "red_team")
+    assert rt["cost_usd"] == 0.02 and rt["ms"] == 1200.0
+    tg = next(h for h in tr if h["agent"] == "target")
+    assert "HTTP 200" in tg["note"] and tg["ms"] == 340.0
+    assert next(h for h in tr if h["agent"] == "judge")["note"] == "tool_misuse fired: ssrf"
+    # only the Red Team hop carries cost — Orchestrator/target/judge are deterministic
+    assert all(h["cost_usd"] == 0.0 for h in tr if h["agent"] != "red_team")
 
 
 def _canned(verdict="fail", severity="low", cost=0.01):

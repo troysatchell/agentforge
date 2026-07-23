@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import time
 import urllib.error
 import urllib.request
 import uuid
@@ -153,18 +154,35 @@ def _verdict(http_status: int, body_text: str) -> tuple[str, str, str | None]:
     return "partial", "medium", f"unexpected status {http_status}"
 
 
+def _attempt_trace(*, category: str, gen_cost: float, gen_ms: float, route: str,
+                   status: int, fire_ms: float, verdict: str, predicate: str | None) -> list[dict]:
+    """Per-hop trace for the console drill-down (CON4) — PHI-free notes + per-hop
+    cost/latency. Orchestrator/Judge run deterministically ($0); the Red Team's
+    Kimi call and the target round-trip carry the measured cost/latency."""
+    return [
+        {"agent": "orchestrator", "note": f"selected {category} (coverage sweep)", "cost_usd": 0.0, "ms": None},
+        {"agent": "red_team", "note": "Kimi K2.6 generated the attack", "cost_usd": round(gen_cost, 5), "ms": gen_ms},
+        {"agent": "target", "note": f"{route} → HTTP {status}", "cost_usd": 0.0, "ms": fire_ms},
+        {"agent": "judge", "note": predicate or f"deterministic verdict: {verdict}", "cost_usd": 0.0, "ms": None},
+    ]
+
+
 def _run_one(token: str, spec: tuple, seq: int) -> dict:
     """Blocking: generate + fire + judge one attack. Returns a PHI-free attempt."""
     s = load_settings()
     category, sub, owasp, route_kind, patient, instruction = spec
+    t0 = time.perf_counter()
     fields, cost = _kimi_generate(instruction)
+    gen_ms = round((time.perf_counter() - t0) * 1000, 1)
     turn = _build_turn(route_kind, patient, fields)
     client = TargetClient(base_url=s.target_base_url, allowlist=TargetAllowlist(s.target_base_url), transport=_target_transport)
+    t1 = time.perf_counter()
     try:
         resp = client.execute(access_token=token, input_sequence=[turn])
         status, body = resp.http_status, resp.body
     except (TargetClientError, OutOfScopeError) as e:
         status, body = 0, str(e)
+    fire_ms = round((time.perf_counter() - t1) * 1000, 1)
     body_text = json.dumps(body) if isinstance(body, (dict, list)) else str(body)
     if route_kind == "document" and status == 200 and '"document_id"' in body_text:
         # V1: the out-of-scope server file was read (file_get_contents, extension-only
@@ -173,10 +191,16 @@ def _run_one(token: str, spec: tuple, seq: int) -> dict:
             "foreign_file_bytes fired: an out-of-scope server file was read and attached to the patient chart (V1 local-file-read)")
     else:
         verdict, severity, predicate = _verdict(status, body_text)
+    route = turn.route.replace("/apis/default", "")
+    turns = 1 + len(fields.get("prior_turns") or [])
     return {"seq": seq, "attack_id": str(uuid.uuid4()), "category": category, "subcategory": sub,
-            "owasp": owasp, "route": turn.route.replace("/apis/default", ""), "http_status": status,
+            "owasp": owasp, "route": route, "http_status": status,
             "verdict": verdict, "severity": severity, "predicate": predicate, "cost_usd": cost,
             "agent_path": ["orchestrator", "red_team", "target", "judge"],
+            "trace": _attempt_trace(category=category, gen_cost=cost, gen_ms=gen_ms, route=route,
+                                    status=status, fire_ms=fire_ms, verdict=verdict, predicate=predicate),
+            "repro": {"route": route, "payload": turn.payload},
+            "turns": turns, "mutation_of": None,
             "ts": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")}
 
 
