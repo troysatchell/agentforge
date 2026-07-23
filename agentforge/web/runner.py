@@ -25,7 +25,11 @@ from datetime import datetime, timezone
 from typing import Any, AsyncIterator, Callable
 
 from agentforge.config import load_settings
+from agentforge.contracts.common import AttackCategory
 from agentforge.contracts.result import InputTurn
+from agentforge.contracts.verdict import Outcome, Severity
+from agentforge.orchestrator import Orchestrator
+from agentforge.store import ExploitRecord
 from agentforge.target.allowlist import OutOfScopeError, TargetAllowlist
 from agentforge.target.client import TargetClient, TargetClientError
 
@@ -233,6 +237,108 @@ def _next_reason(category: str, coverage: dict[str, int]) -> str:
     return f"re-probe — {category} ({n} prior attempt{'s' if n != 1 else ''})"
 
 
+class _CoverageStore:
+    """Minimal in-memory ``ExploitStore`` holding one adjudicated record per
+    counted attempt per category — just enough for the real deterministic
+    Orchestrator to read coverage from. No LLM, no PHI, no persistence."""
+
+    def __init__(self, records: list[ExploitRecord]) -> None:
+        self._records = records
+
+    def record(self, rec: ExploitRecord) -> bool:
+        self._records.append(rec)
+        return True
+
+    def all(self) -> list[ExploitRecord]:
+        return list(self._records)
+
+    def cases_tested_by_category(self) -> dict[AttackCategory, int]:
+        counts: dict[AttackCategory, int] = {}
+        for rec in self._records:
+            counts[rec.attack_category] = counts.get(rec.attack_category, 0) + 1
+        return counts
+
+    def open_findings_by_category(self) -> dict[AttackCategory, int]:
+        return {}
+
+    def regressions(self) -> list[ExploitRecord]:
+        return []
+
+
+def _coverage_store(coverage: dict[str, int]) -> _CoverageStore:
+    """Materialize ``coverage`` (category -> attempts) into an in-memory store:
+    one adjudicated FAIL record per counted attempt. Unknown category names are
+    skipped rather than crashing the console."""
+    records: list[ExploitRecord] = []
+    i = 0
+    now = datetime.now(timezone.utc)
+    for name, count in coverage.items():
+        try:
+            category = AttackCategory(name)
+        except ValueError:
+            continue
+        for _ in range(max(0, int(count))):
+            i += 1
+            records.append(
+                ExploitRecord(
+                    exploit_id=f"con-{i}",
+                    correlation_id="console",
+                    attack_id=str(uuid.uuid4()),
+                    sequence_hash=f"con-h{i}",
+                    attack_category=category,
+                    severity=Severity.LOW,
+                    outcome=Outcome.FAIL,
+                    adjudicated_at=now,
+                )
+            )
+    return _CoverageStore(records)
+
+
+def orchestrator_verdict(
+    coverage: dict[str, int], *, spent_usd: float, budget_usd: float, breaches: int
+) -> dict:
+    """Consult the REAL deterministic Orchestrator for the console's decision
+    ticker — the least-covered next target (why-next) and the
+    cost-without-signal halt (why-halt). Delegates to
+    ``agentforge.orchestrator.Orchestrator``; the console no longer
+    re-implements a fixed coverage sweep. Everything returned is PHI-free.
+    """
+    correlation_id = f"console-{uuid.uuid4()}"
+    orchestrator = Orchestrator(_coverage_store(coverage))
+
+    directive = orchestrator.next_directive(
+        correlation_id=correlation_id,
+        authorized_patient_uuid=BOUND_PATIENT,
+        target_base_url=None,
+        max_usd=budget_usd,
+        max_attempts=len(PLAN),
+    )
+    next_category = directive.attack_category.value
+    tested = directive.coverage_context.cases_tested_in_category or 0
+    if tested == 0:
+        next_reason = f"least-covered — {next_category} not yet probed this run"
+    else:
+        next_reason = (
+            f"least-covered — {next_category} "
+            f"({tested} prior attempt{'s' if tested != 1 else ''})"
+        )
+
+    error = orchestrator.should_halt(
+        spent_usd=spent_usd,
+        ceiling_usd=budget_usd,
+        signal_produced=breaches > 0,
+        correlation_id=correlation_id,
+    )
+    halt = None
+    if error is not None:
+        halt = (
+            f"cost-without-signal — ${spent_usd:.2f} spent, 0 confirmed "
+            "breaches (orchestrator halt)"
+        )
+
+    return {"next_category": next_category, "next_reason": next_reason, "halt": halt}
+
+
 async def run_campaign(
     token: str, categories: list[str] | None = None, *, budget_usd: float = _BUDGET_USD,
     run_one: Callable[..., dict] | None = None,
@@ -264,8 +370,13 @@ async def run_campaign(
                        "data": {"at": i - 1, "cost_usd": round(total, 5), "reason": "operator halt"}}
                 return
             category = spec[0]
+            decision = orchestrator_verdict(
+                coverage, spent_usd=total, budget_usd=budget_usd, breaches=breaches
+            )
             yield {"event": "decision",
-                   "data": {"seq": i, "category": category, "reason": _next_reason(category, coverage)}}
+                   "data": {"seq": i, "category": category, "reason": _next_reason(category, coverage),
+                            "orchestrator_next": decision["next_category"],
+                            "orchestrator_reason": decision["next_reason"]}}
             attempt = await asyncio.to_thread(runner_fn, token, spec, i)
             attempt["cost_by_agent"] = _cost_by_agent(attempt)
             total += attempt["cost_usd"]
@@ -297,11 +408,12 @@ async def run_campaign(
                 yield {"event": "stopped",
                        "data": {"at": i, "cost_usd": round(total, 5), "reason": "operator halt"}}
                 return
-            if total >= budget_usd and breaches == 0:
+            halt = orchestrator_verdict(
+                coverage, spent_usd=total, budget_usd=budget_usd, breaches=breaches,
+            )["halt"]
+            if halt is not None:
                 yield {"event": "stopped",
-                       "data": {"at": i, "cost_usd": round(total, 5),
-                                "reason": f"cost-without-signal — ${total:.2f} spent, 0 confirmed "
-                                          "breaches (orchestrator halt)"}}
+                       "data": {"at": i, "cost_usd": round(total, 5), "reason": halt}}
                 return
         yield {"event": "done",
                "data": {"attempts": len(plan), "cost_usd": round(total, 5), "breaches": breaches,
