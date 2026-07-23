@@ -234,20 +234,27 @@ def _next_reason(category: str, coverage: dict[str, int]) -> str:
 
 
 async def run_campaign(
-    token: str, categories: list[str] | None = None, *, budget_usd: float = _BUDGET_USD
+    token: str, categories: list[str] | None = None, *, budget_usd: float = _BUDGET_USD,
+    run_one: Callable[..., dict] | None = None,
 ) -> AsyncIterator[dict]:
     """Async generator: yields {"event","data"} dicts for SSE as the campaign runs.
 
     Beyond the raw attempts it surfaces the Orchestrator's decisions (why it
     targets next, why it halts on cost-without-signal) and per-agent cost — the
     monitoring signals the operator console renders.
+
+    ``run_one`` is an injectable per-attempt seam (tests supply a fake); when it
+    is not passed we resolve the MODULE-GLOBAL ``_run_one`` at CALL TIME, so a
+    ``monkeypatch.setattr(runner, "_run_one", ...)`` is still honoured.
     """
+    runner_fn = run_one if run_one is not None else _run_one
     plan = [p for p in PLAN if not categories or p[0] in categories]
     STATE.active = True
     STATE.stop = False
     total = 0.0
     breaches = 0
     coverage: dict[str, int] = {}
+    next_seq = len(plan)  # base probes take seq 1..len(plan); mutations get fresh seqs beyond that
     try:
         yield {"event": "start", "data": {"total": len(plan), "categories": [p[0] for p in plan],
                                           "budget_usd": budget_usd}}
@@ -259,13 +266,33 @@ async def run_campaign(
             category = spec[0]
             yield {"event": "decision",
                    "data": {"seq": i, "category": category, "reason": _next_reason(category, coverage)}}
-            attempt = await asyncio.to_thread(_run_one, token, spec, i)
+            attempt = await asyncio.to_thread(runner_fn, token, spec, i)
             attempt["cost_by_agent"] = _cost_by_agent(attempt)
             total += attempt["cost_usd"]
             coverage[category] = coverage.get(category, 0) + 1
             if attempt["verdict"] == "success":
                 breaches += 1
             yield {"event": "attempt", "data": attempt}
+
+            # CON5 mutation provenance: a base PARTIAL is a near-miss worth one
+            # follow-up. Spawn exactly ONE 'mutation' probe (a fresh Kimi
+            # generation of the same spec) whose ``mutation_of`` points at the
+            # parent's seq. A mutation never spawns another (no recursion): only
+            # a base partial gets here, and mutations are not iterated by `plan`.
+            if (
+                attempt.get("mutation_of") is None
+                and attempt["verdict"] == "partial"
+                and not STATE.stop  # an operator halt after the base attempt cancels the mutation
+            ):
+                next_seq += 1
+                mutation = await asyncio.to_thread(runner_fn, token, spec, next_seq)
+                mutation["mutation_of"] = attempt["seq"]
+                mutation["cost_by_agent"] = _cost_by_agent(mutation)
+                total += mutation["cost_usd"]
+                if mutation["verdict"] == "success":
+                    breaches += 1
+                yield {"event": "attempt", "data": mutation}
+
             if STATE.stop:  # operator halt wins over a same-iteration cost halt
                 yield {"event": "stopped",
                        "data": {"at": i, "cost_usd": round(total, 5), "reason": "operator halt"}}
