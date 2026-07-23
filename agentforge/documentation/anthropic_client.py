@@ -47,6 +47,8 @@ class AnthropicClient:
             response = self._transport(url, headers, body)
         except Exception as exc:  # noqa: BLE001 — network/transport failure
             raise AnthropicError(f"Anthropic transport call failed: {exc}") from exc
+        if not isinstance(response, dict):
+            raise AnthropicError(f"Malformed Anthropic API response (not an object): {response!r}")
 
         if "error" in response:
             raise AnthropicError(f"Anthropic API returned an error: {response['error']!r}")
@@ -59,6 +61,9 @@ class AnthropicClient:
             raise AnthropicError(f"Anthropic API response is missing 'content': {response!r}")
 
         try:
-            return response["content"][0]["text"]
+            text = response["content"][0]["text"]
         except (IndexError, KeyError, TypeError) as exc:
             raise AnthropicError(f"Malformed Anthropic API response: {response!r}") from exc
+        if not isinstance(text, str):
+            raise AnthropicError(f"Malformed Anthropic API response (text not a string): {response!r}")
+        return text

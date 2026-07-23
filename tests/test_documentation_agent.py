@@ -21,6 +21,7 @@ from agentforge.documentation import (
     AnthropicClient,
     DocumentationAgent,
 )
+from agentforge.documentation.anthropic_client import AnthropicError
 
 FIXED_NOW = datetime(2026, 7, 21, 12, 0, 0, tzinfo=timezone.utc)
 _OWASP = OwaspMapping(
@@ -262,3 +263,34 @@ def test_anthropic_client_rejects_empty_api_key() -> None:
             model="claude-opus-4-8",
             transport=lambda u, h, b: {},
         )
+
+
+def _client(transport) -> AnthropicClient:
+    return AnthropicClient(
+        api_key="sk-ant-test",
+        base_url="https://api.anthropic.com",
+        model="claude-opus-4-8",
+        transport=transport,
+    )
+
+
+@pytest.mark.parametrize("bad", [None, ["not", "a", "dict"], "raw string", 42])
+def test_anthropic_client_rejects_non_object_response(bad) -> None:
+    # A transport that returns a non-mapping must degrade to AnthropicError, not a
+    # raw TypeError (complete() promises str; DocumentationAgent only handles this).
+    with pytest.raises(AnthropicError):
+        _client(lambda u, h, b: bad).complete(system="SYS", user="USR")
+
+
+def test_anthropic_client_rejects_non_string_text() -> None:
+    transport = _anthropic_transport({"content": [{"type": "text", "text": None}]})
+    with pytest.raises(AnthropicError):
+        _client(transport).complete(system="SYS", user="USR")
+
+
+def test_anthropic_client_wraps_transport_failure() -> None:
+    def boom(url, headers, body):
+        raise ConnectionError("network down")
+
+    with pytest.raises(AnthropicError):
+        _client(boom).complete(system="SYS", user="USR")
