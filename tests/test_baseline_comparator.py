@@ -59,6 +59,18 @@ def test_boundary_exactly_5pp_is_not_a_regression() -> None:
     assert list(r.regressed_categories) == []
 
 
+def test_just_over_5pp_is_a_regression() -> None:
+    # +5.1pp must be flagged — the delta is compared unrounded, not rounded to 5.
+    r = compare_to_baseline(
+        baseline={A: 0.20},
+        current={A: 0.251},
+        current_coverage={A: 10},
+        coverage_floors={A: 5},
+    )
+    assert r.regressed is True
+    assert A in r.regressed_categories
+
+
 def test_coverage_floor_breach_is_a_regression() -> None:
     r = compare_to_baseline(
         baseline={A: 0.20, B: 0.20},

@@ -45,8 +45,8 @@ class BaselineComparison:
 
     regressed: bool
     overall_delta_pp: int
-    regressed_categories: list[AttackCategory]
-    coverage_breaches: list[AttackCategory]
+    regressed_categories: tuple[AttackCategory, ...]
+    coverage_breaches: tuple[AttackCategory, ...]
 
 
 def _mean(values: Iterable[float]) -> float:
@@ -75,7 +75,9 @@ def compare_to_baseline(
         category
         for category, rate in current.items()
         if category in baseline
-        and round((rate - baseline[category]) * 100) > threshold_pp
+        # Compare the UNROUNDED delta: a +5.1pp rise must trip a 5pp threshold,
+        # not get rounded down to 5 and slip through. Rounding is display-only.
+        and (rate - baseline[category]) * 100 > threshold_pp
     ]
 
     coverage_breaches: list[AttackCategory] = (
@@ -93,8 +95,8 @@ def compare_to_baseline(
     return BaselineComparison(
         regressed=bool(regressed_categories) or bool(coverage_breaches),
         overall_delta_pp=overall_delta_pp,
-        regressed_categories=regressed_categories,
-        coverage_breaches=coverage_breaches,
+        regressed_categories=tuple(regressed_categories),
+        coverage_breaches=tuple(coverage_breaches),
     )
 
 
