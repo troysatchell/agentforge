@@ -26,6 +26,7 @@ CREATE TABLE IF NOT EXISTS exploit_records (
     outcome TEXT NOT NULL,
     predicate_fired TEXT,
     regression_flag INTEGER NOT NULL,
+    cross_category TEXT,
     target_version TEXT,
     reproduction_ref TEXT,
     adjudicated_at TEXT NOT NULL
@@ -53,6 +54,7 @@ _COLUMNS = (
     "outcome",
     "predicate_fired",
     "regression_flag",
+    "cross_category",
     "target_version",
     "reproduction_ref",
     "adjudicated_at",
@@ -65,9 +67,23 @@ class SqliteExploitStore:
     def __init__(self, path: str = ":memory:") -> None:
         self._conn = sqlite3.connect(path)
         self._conn.execute(_SCHEMA)
+        self._migrate()
         for stmt in _INDEXES:
             self._conn.execute(stmt)
         self._conn.commit()
+
+    def _migrate(self) -> None:
+        """Bring a pre-existing DB up to the current schema.
+
+        ``CREATE TABLE IF NOT EXISTS`` leaves an older table untouched, so a
+        database written before ``cross_category`` existed would fail every
+        insert/select over ``_COLUMNS``. Add the column idempotently.
+        """
+        existing = {
+            row[1] for row in self._conn.execute("PRAGMA table_info(exploit_records)")
+        }
+        if "cross_category" not in existing:
+            self._conn.execute("ALTER TABLE exploit_records ADD COLUMN cross_category TEXT")
 
     def record(self, rec: ExploitRecord) -> bool:
         row = (
@@ -80,6 +96,7 @@ class SqliteExploitStore:
             rec.outcome.value,
             rec.predicate_fired,
             int(rec.regression_flag),
+            rec.cross_category,
             rec.target_version,
             rec.reproduction_ref,
             rec.adjudicated_at.isoformat(),
@@ -129,6 +146,7 @@ class SqliteExploitStore:
             outcome,
             predicate_fired,
             regression_flag,
+            cross_category,
             target_version,
             reproduction_ref,
             adjudicated_at,
@@ -143,6 +161,7 @@ class SqliteExploitStore:
             outcome=Outcome(outcome),
             predicate_fired=predicate_fired,
             regression_flag=bool(regression_flag),
+            cross_category=cross_category,
             target_version=target_version,
             reproduction_ref=reproduction_ref,
             adjudicated_at=datetime.fromisoformat(adjudicated_at),

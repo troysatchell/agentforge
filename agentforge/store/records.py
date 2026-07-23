@@ -27,6 +27,7 @@ class ExploitRecord(StrictModel):
     outcome: Outcome
     predicate_fired: str | None = None
     regression_flag: bool = False
+    cross_category: str | None = None
     target_version: str | None = None
     reproduction_ref: str | None = None
     adjudicated_at: datetime
@@ -55,6 +56,7 @@ class ExploitRecord(StrictModel):
             outcome=verdict.outcome,
             predicate_fired=verdict.predicate_fired,
             regression_flag=verdict.regression_flag,
+            cross_category=verdict.cross_category_regression,
             target_version=verdict.target_version,
             reproduction_ref=verdict.reproduction_ref,
             adjudicated_at=verdict.adjudicated_at,

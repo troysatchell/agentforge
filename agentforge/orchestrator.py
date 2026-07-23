@@ -140,6 +140,7 @@ class Orchestrator:
                     "detail": {
                         "exploit_id": rec.exploit_id,
                         "reappeared_in_version": rec.target_version or "unknown",
+                        "cross_category": rec.cross_category,
                         "action": "trigger_full_regression",
                     },
                 }

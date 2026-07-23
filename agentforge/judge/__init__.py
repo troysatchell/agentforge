@@ -8,5 +8,20 @@ never-approve-a-confirmed-exploit invariant.
 
 from agentforge.judge.base import Oracle, OracleContext
 from agentforge.judge.deterministic import DeterministicJudge
+from agentforge.judge.replay import (
+    InputKeyedReplayTransport,
+    ReplayMiss,
+    input_key,
+)
+from agentforge.judge.semantic import SemanticDecision, SemanticResidueJudge
 
-__all__ = ["Oracle", "OracleContext", "DeterministicJudge"]
+__all__ = [
+    "Oracle",
+    "OracleContext",
+    "DeterministicJudge",
+    "SemanticResidueJudge",
+    "SemanticDecision",
+    "InputKeyedReplayTransport",
+    "ReplayMiss",
+    "input_key",
+]
