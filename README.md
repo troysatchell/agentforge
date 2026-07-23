@@ -65,10 +65,23 @@ live token.
 **Live end-to-end.** The platform runs real attacks against the deployed co-pilot: an **operator
 console** (`agentforge/web/`) where **Kimi K2.6** generates each attack, the `TargetClient` fires it
 at the authenticated co-pilot with a launch-bound token, and a **deterministic verdict** streams back
-(see **Run it yourself** above). Built + green (~200 tests): deterministic Orchestrator, Judge
-oracles + honest verdict signals, SQLite exploit store, input-keyed replay, allowlist + target
-client, Kimi client, Red Team attack-gen, LangGraph skeleton. **Remaining (Final only):** the
-Documentation agent + ≥3 written vuln reports, Langfuse trace wiring, and the AI cost write-up.
+(see **Run it yourself** above).
+
+**All four agents built + green (322 tests):** deterministic Orchestrator (coverage/budget/regression,
+cost-without-signal halt), Judge (6 deterministic oracles → **6/6 attack categories** + a Sonnet-5
+semantic residue layer), Red Team (attack-gen + **mutation of partial successes** + **multi-turn** +
+Garak/PyRIT corpus ingestion), **Documentation agent** (Opus 4.8, six-field reports, human-gated on
+critical), SQLite exploit store + regression harness, input-keyed replay, allowlist + target client,
+and the **observability code layer** (per-agent cost, the six-questions metrics, PHI-free spans +
+Langfuse mapping).
+
+**Deliverables:** THREAT_MODEL · ARCHITECTURE · USERS · DECISION_RECORD; the eval suite (8 cases / 6
+categories, OWASP-mapped); TRIAGE (11 findings + a designed false-positive); AI_COST_ANALYSIS;
+ATO_EVIDENCE_PACKET; **3 standalone vuln reports** (`docs/reports/`); PERFORMANCE + INTEGRATION_PACKET.
+
+**Remaining:** self-hosted Langfuse deploy (the emission mapping is built behind an injected seam);
+the demo video + social post; and fully-unattended live firing (the launch-bound token is minted via
+the documented browser step).
 
 | Deliverable | State |
 |---|---|
