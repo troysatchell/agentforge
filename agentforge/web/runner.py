@@ -370,8 +370,13 @@ async def run_campaign(
                        "data": {"at": i - 1, "cost_usd": round(total, 5), "reason": "operator halt"}}
                 return
             category = spec[0]
+            decision = orchestrator_verdict(
+                coverage, spent_usd=total, budget_usd=budget_usd, breaches=breaches
+            )
             yield {"event": "decision",
-                   "data": {"seq": i, "category": category, "reason": _next_reason(category, coverage)}}
+                   "data": {"seq": i, "category": category, "reason": _next_reason(category, coverage),
+                            "orchestrator_next": decision["next_category"],
+                            "orchestrator_reason": decision["next_reason"]}}
             attempt = await asyncio.to_thread(runner_fn, token, spec, i)
             attempt["cost_by_agent"] = _cost_by_agent(attempt)
             total += attempt["cost_usd"]

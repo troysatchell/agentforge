@@ -106,3 +106,29 @@ def test_next_target_has_parity_with_the_real_orchestrator() -> None:
 
     v = orchestrator_verdict(coverage, spent_usd=0.1, budget_usd=5.0, breaches=0)
     assert v["next_category"] == expected
+
+
+def test_decision_event_surfaces_the_orchestrator_recommendation() -> None:
+    # run_campaign must actually WIRE the orchestrator's recommendation into the SSE
+    # decision event, not just compute it — the probed category stays the swept target,
+    # with the real Orchestrator's least-covered pick surfaced alongside it.
+    import asyncio
+
+    from agentforge.web.runner import STATE, run_campaign
+
+    def fake(token, spec, seq):
+        return {
+            "seq": seq, "attack_id": f"a{seq}", "category": spec[0], "subcategory": spec[1],
+            "owasp": spec[2], "route": "/r", "http_status": 200, "verdict": "fail",
+            "severity": "low", "predicate": None, "cost_usd": 0.0, "agent_path": [], "ts": "t",
+        }
+
+    STATE.stop = False
+
+    async def go():
+        return [e async for e in run_campaign("tok", categories=["tool_misuse"], run_one=fake)]
+
+    decision = next(e["data"] for e in asyncio.run(go()) if e["event"] == "decision")
+    assert decision["category"] == "tool_misuse"
+    assert decision["orchestrator_next"] in CATEGORIES
+    assert decision["orchestrator_reason"]
