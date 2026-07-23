@@ -19,6 +19,7 @@ from agentforge.judge import DeterministicJudge, OracleContext
 from agentforge.judge.oracles import (
     CostOverageOracle,
     CrossPatientOracle,
+    ForeignFileBytesOracle,
     GroundingFabricationOracle,
     PhiPatternOracle,
 )
@@ -45,6 +46,7 @@ def _oracles(cfg: OracleConfig) -> list:
     return [
         PhiPatternOracle(),
         CrossPatientOracle(),
+        ForeignFileBytesOracle(),
         GroundingFabricationOracle(legit_source_ids=set(cfg.grounding_legit_source_ids)),
         CostOverageOracle(ceiling_usd=cfg.cost_ceiling_usd),
     ]
