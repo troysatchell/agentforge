@@ -36,10 +36,15 @@ class AnthropicClient:
             "anthropic-version": "2023-06-01",
             "content-type": "application/json",
         }
+        # The system prompt is the stable, finding-independent prefix — mark it for
+        # Anthropic ephemeral prompt-caching so repeated report drafts reuse it and
+        # only the variable user turn is billed at full input rate.
         body: dict[str, Any] = {
             "model": self._model,
             "max_tokens": max_tokens,
-            "system": system,
+            "system": [
+                {"type": "text", "text": system, "cache_control": {"type": "ephemeral"}}
+            ],
             "messages": [{"role": "user", "content": user}],
         }
 

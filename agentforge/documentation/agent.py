@@ -199,6 +199,7 @@ class DocumentationAgent:
             f"- **Category:** {category} · **OWASP:** {web} / {llm}\n"
             f"- **Status:** open · **Discovered:** {discovered} · "
             f"**Target version:** {verdict.target_version}\n"
+            f"- **Correlation id:** {result.correlation_id}\n"
             f"- **Exploit id / sequence_hash:** {result.sequence_hash}\n\n"
             f"## Description & clinical impact\n{body}\n\n"
             f"## Reproduction (minimal)\n"
