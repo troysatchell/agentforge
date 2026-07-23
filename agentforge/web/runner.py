@@ -177,14 +177,18 @@ def _run_one(token: str, spec: tuple, seq: int) -> dict:
     turn = _build_turn(route_kind, patient, fields)
     client = TargetClient(base_url=s.target_base_url, allowlist=TargetAllowlist(s.target_base_url), transport=_target_transport)
     t1 = time.perf_counter()
+    client_error = None
     try:
         resp = client.execute(access_token=token, input_sequence=[turn])
         status, body = resp.http_status, resp.body
     except (TargetClientError, OutOfScopeError) as e:
-        status, body = 0, str(e)
+        status, body, client_error = 0, "", str(e)[:200]
     fire_ms = round((time.perf_counter() - t1) * 1000, 1)
     body_text = json.dumps(body) if isinstance(body, (dict, list)) else str(body)
-    if route_kind == "document" and status == 200 and '"document_id"' in body_text:
+    if client_error is not None:
+        # A platform-side transport / allowlist event — NOT the target defending.
+        verdict, severity, predicate = ("partial", "low", f"platform: request not sent — {client_error}")
+    elif route_kind == "document" and status == 200 and '"document_id"' in body_text:
         # V1: the out-of-scope server file was read (file_get_contents, extension-only
         # validation, no directory guard) and attached to the patient chart.
         verdict, severity, predicate = ("success", "critical",
