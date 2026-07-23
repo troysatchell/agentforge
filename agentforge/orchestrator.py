@@ -180,6 +180,6 @@ class Orchestrator:
                         "action": "trigger_full_regression",
                     },
                 }
-            ).root
+            )
             for rec in records
         ]

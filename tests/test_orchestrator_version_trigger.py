@@ -84,8 +84,14 @@ def test_new_version_triggers_regression_pass_over_stored_exploits() -> None:
     store = _FakeStore([_record(A, 1, target_version="v1"), _record(B, 2, target_version="v1")])
     errors = _orch(store).on_target_version(current_version="v2", correlation_id="corr-x")
     assert len(errors) == 2
-    assert all(e.error_type == "regression_detected" for e in errors)
-    assert all("v2" in str(e.detail) for e in errors)
+    # AgentError envelope (same contract as regression_signals) — assert via model_dump
+    dumped = [e.model_dump(mode="json") for e in errors]
+    for d in dumped:
+        assert d["error_type"] == "regression_detected"
+        assert d["detail"]["reappeared_in_version"] == "v2"
+        assert d["detail"]["action"] == "trigger_full_regression"
+    # exactly one error per DISTINCT stored exploit — not the same one twice
+    assert {d["detail"]["exploit_id"] for d in dumped} == {"prompt_injection-1", "data_exfiltration-2"}
 
 
 def test_known_version_does_not_trigger() -> None:
