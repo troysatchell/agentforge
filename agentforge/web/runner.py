@@ -279,7 +279,11 @@ async def run_campaign(
             # generation of the same spec) whose ``mutation_of`` points at the
             # parent's seq. A mutation never spawns another (no recursion): only
             # a base partial gets here, and mutations are not iterated by `plan`.
-            if attempt.get("mutation_of") is None and attempt["verdict"] == "partial":
+            if (
+                attempt.get("mutation_of") is None
+                and attempt["verdict"] == "partial"
+                and not STATE.stop  # an operator halt after the base attempt cancels the mutation
+            ):
                 next_seq += 1
                 mutation = await asyncio.to_thread(runner_fn, token, spec, next_seq)
                 mutation["mutation_of"] = attempt["seq"]

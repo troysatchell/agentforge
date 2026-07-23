@@ -54,8 +54,9 @@ def test_partial_base_probe_spawns_a_mutation_with_provenance() -> None:
 
     def fake(token, spec, seq):
         calls["n"] += 1
-        # the base probe is a partial near-miss; the mutation lands as success
-        return _attempt(seq, "partial" if calls["n"] == 1 else "success")
+        # base AND mutation both return partial: a correct impl mutates the base
+        # exactly ONCE and must NOT recurse on the mutation's own partial verdict.
+        return _attempt(seq, "partial")
 
     STATE.stop = False
     events = _drive(fake, categories=["prompt_injection"])
@@ -63,9 +64,9 @@ def test_partial_base_probe_spawns_a_mutation_with_provenance() -> None:
 
     base = [a for a in attempts if a.get("mutation_of") is None]
     muts = [a for a in attempts if a.get("mutation_of") is not None]
-    assert len(base) >= 1
-    assert len(muts) >= 1, "a partial base probe must spawn at least one mutation attempt"
-    assert muts[0]["mutation_of"] in {a["seq"] for a in base}
+    assert len(base) == 1
+    assert len(muts) == 1, "exactly one mutation — the mutation's own partial must not recurse"
+    assert muts[0]["mutation_of"] == base[0]["seq"]
 
 
 def test_no_mutation_when_base_probe_is_a_clean_fail() -> None:
