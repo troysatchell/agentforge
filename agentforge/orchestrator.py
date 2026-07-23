@@ -147,3 +147,39 @@ class Orchestrator:
             )
             for rec in self._store.regressions()
         ]
+
+    def on_target_version(
+        self, *, current_version: str, correlation_id: str
+    ) -> list[AgentError]:
+        """Kick a full regression pass when the target reports a new version.
+
+        A ``current_version`` the store has never recorded — while the store is
+        non-empty — means the black-box target was upgraded underneath us. Every
+        stored exploit must be re-verified against the new build, so emit one
+        ``regression_detected`` error per stored record. A version already seen
+        in the store (stable) or an empty store yields no trigger, so a steady
+        campaign never produces false regression signals.
+        """
+        records = self._store.all()
+        known_versions = {rec.target_version for rec in records}
+        if not records or current_version in known_versions:
+            return []
+
+        return [
+            AgentError.model_validate(
+                {
+                    "schema_version": "1.0.0",
+                    "error_type": "regression_detected",
+                    "correlation_id": correlation_id,
+                    "raised_by": "orchestrator",
+                    "raised_at": self._clock(),
+                    "detail": {
+                        "exploit_id": rec.exploit_id,
+                        "reappeared_in_version": current_version,
+                        "cross_category": rec.cross_category,
+                        "action": "trigger_full_regression",
+                    },
+                }
+            ).root
+            for rec in records
+        ]
