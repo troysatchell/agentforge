@@ -67,6 +67,7 @@ def test_partial_base_probe_spawns_a_mutation_with_provenance() -> None:
     assert len(base) == 1
     assert len(muts) == 1, "exactly one mutation — the mutation's own partial must not recurse"
     assert muts[0]["mutation_of"] == base[0]["seq"]
+    assert muts[0]["seq"] != base[0]["seq"]  # the mutation gets a FRESH seq, not the base's
 
 
 def test_no_mutation_when_base_probe_is_a_clean_fail() -> None:
