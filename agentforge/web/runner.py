@@ -184,22 +184,73 @@ def _target_transport(method: str, url: str, headers: dict, body: Any) -> tuple[
     return _http(method, url, headers, body, timeout=60)
 
 
-async def run_campaign(token: str, categories: list[str] | None = None) -> AsyncIterator[dict]:
-    """Async generator: yields {"event","data"} dicts for SSE as the campaign runs."""
+_BUDGET_USD = 5.0
+
+
+def _cost_by_agent(attempt: dict) -> dict[str, float]:
+    """Attribute one attempt's spend per agent (CON3). Kimi generation is the Red
+    Team's cost; the Judge is deterministic ($0) and Documentation is not invoked
+    on the live console path."""
+    return {"red_team": round(attempt.get("cost_usd", 0.0), 5), "judge": 0.0, "documentation": 0.0}
+
+
+def _next_reason(category: str, coverage: dict[str, int]) -> str:
+    """Why this category is targeted next (CON2). The console runs a fixed
+    coverage sweep — one probe per selected category; the deterministic
+    Orchestrator's least-covered prioritization lives in
+    ``agentforge/orchestrator.py``."""
+    n = coverage.get(category, 0)
+    if n == 0:
+        return f"coverage sweep — {category} not yet probed this run"
+    return f"re-probe — {category} ({n} prior attempt{'s' if n != 1 else ''})"
+
+
+async def run_campaign(
+    token: str, categories: list[str] | None = None, *, budget_usd: float = _BUDGET_USD
+) -> AsyncIterator[dict]:
+    """Async generator: yields {"event","data"} dicts for SSE as the campaign runs.
+
+    Beyond the raw attempts it surfaces the Orchestrator's decisions (why it
+    targets next, why it halts on cost-without-signal) and per-agent cost — the
+    monitoring signals the operator console renders.
+    """
     plan = [p for p in PLAN if not categories or p[0] in categories]
     STATE.active = True
     STATE.stop = False
     total = 0.0
+    breaches = 0
+    coverage: dict[str, int] = {}
     try:
-        yield {"event": "start", "data": {"total": len(plan), "categories": [p[0] for p in plan]}}
+        yield {"event": "start", "data": {"total": len(plan), "categories": [p[0] for p in plan],
+                                          "budget_usd": budget_usd}}
         for i, spec in enumerate(plan, start=1):
             if STATE.stop:
-                yield {"event": "stopped", "data": {"at": i - 1, "cost_usd": round(total, 5)}}
+                yield {"event": "stopped",
+                       "data": {"at": i - 1, "cost_usd": round(total, 5), "reason": "operator halt"}}
                 return
+            category = spec[0]
+            yield {"event": "decision",
+                   "data": {"seq": i, "category": category, "reason": _next_reason(category, coverage)}}
             attempt = await asyncio.to_thread(_run_one, token, spec, i)
+            attempt["cost_by_agent"] = _cost_by_agent(attempt)
             total += attempt["cost_usd"]
+            coverage[category] = coverage.get(category, 0) + 1
+            if attempt["verdict"] == "success":
+                breaches += 1
             yield {"event": "attempt", "data": attempt}
-        yield {"event": "done", "data": {"attempts": len(plan), "cost_usd": round(total, 5)}}
+            if STATE.stop:  # operator halt wins over a same-iteration cost halt
+                yield {"event": "stopped",
+                       "data": {"at": i, "cost_usd": round(total, 5), "reason": "operator halt"}}
+                return
+            if total >= budget_usd and breaches == 0:
+                yield {"event": "stopped",
+                       "data": {"at": i, "cost_usd": round(total, 5),
+                                "reason": f"cost-without-signal — ${total:.2f} spent, 0 confirmed "
+                                          "breaches (orchestrator halt)"}}
+                return
+        yield {"event": "done",
+               "data": {"attempts": len(plan), "cost_usd": round(total, 5), "breaches": breaches,
+                        "reason": "plan complete — all selected categories covered"}}
     finally:
         STATE.active = False
         STATE.stop = False
