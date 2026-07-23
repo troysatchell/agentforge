@@ -201,3 +201,11 @@ def test_replay_is_reproducible() -> None:
     transport = InputKeyedReplayTransport({input_key(body): resp})
 
     assert transport("u", {}, body) == transport("u", {}, body) == resp
+
+    # Both defensive-copy guarantees: mutating a returned response OR the original
+    # source recording must not corrupt a later replay (else replay would leak
+    # state between runs and stop being reproducible).
+    first = transport("u", {}, body)
+    first["content"][0]["text"] = "mutated-return"
+    resp["content"][0]["text"] = "mutated-source"
+    assert transport("u", {}, body)["content"][0]["text"] == "R"

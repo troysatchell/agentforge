@@ -61,6 +61,7 @@ def reissue(
         attack_id=uuid.uuid4(),
         correlation_id=correlation_id,
         attack_category=case.attack_category,
+        attack_subcategory=case.attack_subcategory,
         owasp_mapping=case.owasp_mapping,
         sequence_hash=case.case_id,
         input_sequence=case.input_sequence,
@@ -75,7 +76,7 @@ def reissue(
     # Reproduction requires PROOF: a success verdict whose success predicate
     # actually re-fired. A bare Outcome.SUCCESS with predicate_fired=None is not
     # proof, so it must not pass gate_red_proof (the GateRedProof contract).
-    predicate_fired = verdict.predicate_fired is not None
+    predicate_fired = bool(verdict.predicate_fired and verdict.predicate_fired.strip())
     return RegressionOutcome(
         case_id=case.case_id,
         reproduced=verdict.outcome == Outcome.SUCCESS and predicate_fired,

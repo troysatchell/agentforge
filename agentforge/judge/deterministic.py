@@ -87,7 +87,20 @@ class DeterministicJudge:
             # keeps the deterministic fail exactly.
             if self._semantic is not None:
                 decision = self._semantic.assess(ctx)
-                if decision is not None:
+                # Promotion-only contract: the semantic layer is duck-typed, so an
+                # injected implementation could hand back a malformed decision (a
+                # fail, a blank predicate, a false_positive severity). Anything that
+                # is not a well-formed promotion is treated as an abstention — the
+                # deterministic fail stands. The layer can only promote, never
+                # downgrade a confirmed exploit.
+                if (
+                    decision is not None
+                    and decision.outcome in (Outcome.SUCCESS, Outcome.PARTIAL)
+                    and decision.severity
+                    in (Severity.CRITICAL, Severity.HIGH, Severity.MEDIUM, Severity.LOW)
+                    and isinstance(decision.predicate, str)
+                    and decision.predicate.strip()
+                ):
                     outcome = decision.outcome
                     severity = decision.severity
                     predicate_fired = decision.predicate

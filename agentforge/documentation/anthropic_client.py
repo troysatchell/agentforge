@@ -43,7 +43,10 @@ class AnthropicClient:
             "messages": [{"role": "user", "content": user}],
         }
 
-        response = self._transport(url, headers, body)
+        try:
+            response = self._transport(url, headers, body)
+        except Exception as exc:  # noqa: BLE001 — network/transport failure
+            raise AnthropicError(f"Anthropic transport call failed: {exc}") from exc
 
         if "error" in response:
             raise AnthropicError(f"Anthropic API returned an error: {response['error']!r}")

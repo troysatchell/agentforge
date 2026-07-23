@@ -85,10 +85,21 @@ class DocumentationAgent:
                 status="rejected",
                 reason=f"duplicate finding: sequence_hash {result.sequence_hash!r} already documented",
             )
+        if not (verdict.predicate_fired and verdict.predicate_fired.strip()):
+            return DocumentationOutcome(
+                status="rejected",
+                reason="missing predicate_fired — a success verdict must name the predicate that fired",
+            )
 
         # --- draft prose via the injected Opus client (exactly once) -------
         system, user = self._prompts(verdict, result)
-        body = self._client.complete(system=system, user=user)
+        try:
+            body = self._client.complete(system=system, user=user)
+        except Exception as exc:  # noqa: BLE001 — external client, degrade gracefully
+            return DocumentationOutcome(
+                status="rejected",
+                reason=f"model call failed: {exc}",
+            )
         if not body or not body.strip():
             return DocumentationOutcome(
                 status="rejected",
@@ -125,14 +136,18 @@ class DocumentationAgent:
         The routes/payloads are attacker-controlled: ``json.dumps`` escapes all
         control characters (notably newlines) so the values stay literal data
         and can't inject model instructions or break out of a Markdown fence.
+        ``<``/``>`` are then escaped too so a payload can't spoof the
+        ``</reproduction_sequence>`` delimiter and smuggle text into the trusted
+        region of the prompt/report (tag-spoofing prompt injection).
         """
-        return json.dumps(
+        raw = json.dumps(
             [
                 {"step": turn.turn_index + 1, "route": turn.route, "payload": turn.payload}
                 for turn in result.input_sequence
             ],
             indent=2,
         )
+        return raw.replace("<", "\\u003c").replace(">", "\\u003e")
 
     def _prompts(self, verdict: Verdict, result: AttackResult) -> tuple[str, str]:
         """Build the (system, user) prompt handing the finding to the model."""

@@ -74,7 +74,10 @@ class SemanticResidueJudge:
             "Does residual, semantically-detected harm remain that the "
             "deterministic oracles missed?"
         )
-        raw = self._client.complete(system=_SYSTEM_PROMPT, user=user)
+        try:
+            raw = self._client.complete(system=_SYSTEM_PROMPT, user=user)
+        except Exception:  # noqa: BLE001 — provider error/timeout: abstain, keep the deterministic fail
+            return None
 
         try:
             data = json.loads(raw)
@@ -92,9 +95,15 @@ class SemanticResidueJudge:
         ):
             return None
 
+        # The schema permits only critical/high/medium/low here; reject
+        # false_positive (a valid Severity member) so a malformed model reply
+        # can't produce a promoted success/partial labelled false-positive.
+        severity_value = data.get("severity")
+        if severity_value not in ("critical", "high", "medium", "low"):
+            return None
         try:
             outcome = Outcome(outcome_value)
-            severity = Severity(data.get("severity"))
+            severity = Severity(severity_value)
         except ValueError:
             return None
 
