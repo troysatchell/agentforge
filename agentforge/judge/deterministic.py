@@ -30,6 +30,7 @@ _DEFAULT_SEVERITY_BY_ORACLE_ID: dict[str, Severity] = {
     "cross_patient": Severity.HIGH,
     "phi_pattern": Severity.HIGH,
     "foreign_file_bytes": Severity.HIGH,
+    "tool_misuse": Severity.HIGH,
     "grounding_fabrication": Severity.MEDIUM,
     "cost_overage": Severity.MEDIUM,
 }
