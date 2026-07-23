@@ -54,6 +54,8 @@ def test_request_marks_a_cacheable_prefix() -> None:
     assert "ephemeral" in blob
     # the stable system text is still present in the request
     assert "STABLE SYSTEM PREFIX" in blob
+    # cache_control marks the SYSTEM prefix specifically (placement, not just presence)
+    assert "cache_control" in json.dumps(t.seen["body"]["system"])  # type: ignore[index]
 
 
 # --- correlation_id threaded into the rendered report -------------------------
@@ -102,4 +104,7 @@ def test_report_carries_the_correlation_id() -> None:
     outcome = agent.document(_verdict(corr), _result(corr))
 
     assert outcome.report_markdown is not None
-    assert corr in outcome.report_markdown
+    md = outcome.report_markdown
+    # explicit header contract: a dedicated correlation line + a separate sequence_hash line
+    assert f"- **Correlation id:** {corr}" in md
+    assert "sequence_hash:" in md
