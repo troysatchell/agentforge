@@ -82,6 +82,22 @@ def test_documenter_failure_degrades_and_campaign_continues() -> None:
     assert breach["doc_status"] == "rejected"
 
 
+def test_malformed_documenter_output_degrades_gracefully() -> None:
+    def run_one(token, spec, seq):
+        return _attempt(seq, spec, "success", severity="critical")
+
+    def documenter(attempt):
+        return None  # malformed — not a mapping; must not raise outside the guard
+
+    runner.STATE.stop = False
+    events = _drive(categories=["tool_misuse"], run_one=run_one, documenter=documenter)
+    kinds = [e["event"] for e in events]
+    assert "error" not in kinds and kinds[-1] == "done"
+    breach = next(e["data"] for e in events if e["event"] == "attempt")
+    assert breach["doc_status"] == "rejected"
+    assert breach["report_markdown"] is None
+
+
 def test_document_finding_builds_a_report_from_a_console_attempt(monkeypatch) -> None:
     # the real doc path (contract construction + DocumentationAgent + Opus cost) with
     # a mocked Anthropic HTTP call — no live key needed.
@@ -90,7 +106,8 @@ def test_document_finding_builds_a_report_from_a_console_attempt(monkeypatch) ->
         target_base_url="https://openemr.example.test"))
     monkeypatch.setattr(runner, "_anthropic_post", lambda url, h, b: {
         "content": [{"type": "text", "text": "Drafted description + clinical impact + remediation."}],
-        "usage": {"input_tokens": 1200, "output_tokens": 400}})
+        "usage": {"input_tokens": 1200, "output_tokens": 400,
+                  "cache_creation_input_tokens": 2000, "cache_read_input_tokens": 5000}})
 
     attempt = _attempt(
         4, ("tool_misuse", "local-file-read (V1)", "A01:2021-broken-access-control", "document", "p", "i"),
@@ -99,4 +116,8 @@ def test_document_finding_builds_a_report_from_a_console_attempt(monkeypatch) ->
 
     assert out["doc_status"] == "held_for_human"  # critical → gated for the operator
     assert "Drafted description" in out["report_markdown"]
-    assert out["cost_usd"] > 0  # Opus cost computed from usage
+    # cost bills input + output + BOTH prompt-cache token categories at their rates
+    base = 1200 * runner._OPUS_IN + 400 * runner._OPUS_OUT
+    expected = round(base + 2000 * runner._OPUS_CACHE_WRITE + 5000 * runner._OPUS_CACHE_READ, 5)
+    assert out["cost_usd"] == expected
+    assert out["cost_usd"] > round(base, 5)  # the cache tokens actually add cost

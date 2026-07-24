@@ -356,6 +356,8 @@ def orchestrator_verdict(
 
 # --- 4th agent: Documentation (Opus 4.8) drafts a report on a confirmed breach ---
 _OPUS_IN, _OPUS_OUT = 15.0 / 1e6, 75.0 / 1e6  # rough claude-opus $/token (input / output)
+# prompt-cache rates (the doc agent caches the system prefix): write 1.25x input, read 0.10x
+_OPUS_CACHE_WRITE, _OPUS_CACHE_READ = _OPUS_IN * 1.25, _OPUS_IN * 0.10
 
 
 def _anthropic_post(url: str, headers: dict, body: Any) -> dict:
@@ -416,7 +418,13 @@ def _document_finding(attempt: dict) -> dict:
         model=s.doc_model, transport=_transport,
     )
     outcome = DocumentationAgent(client).document(verdict, result)
-    cost = round(usage.get("input_tokens", 0) * _OPUS_IN + usage.get("output_tokens", 0) * _OPUS_OUT, 5)
+    cost = round(
+        usage.get("input_tokens", 0) * _OPUS_IN
+        + usage.get("output_tokens", 0) * _OPUS_OUT
+        + usage.get("cache_creation_input_tokens", 0) * _OPUS_CACHE_WRITE
+        + usage.get("cache_read_input_tokens", 0) * _OPUS_CACHE_READ,
+        5,
+    )
     return {"report_markdown": outcome.report_markdown, "doc_status": outcome.status, "cost_usd": cost}
 
 
@@ -426,14 +434,16 @@ async def _attach_report(attempt: dict, documenter: Callable[[dict], dict]) -> f
     Opus failure degrades to a ``rejected`` status — the campaign continues."""
     try:
         doc = await asyncio.to_thread(documenter, attempt)
-    except Exception:  # noqa: BLE001 — a documentation failure must not abort the sweep
+        report = doc.get("report_markdown")
+        status = doc.get("doc_status")
+        cost = round(float(doc.get("cost_usd", 0.0) or 0.0), 5)
+    except Exception:  # noqa: BLE001 — a doc failure OR malformed output must not abort the sweep
         attempt["report_markdown"] = None
         attempt["doc_status"] = "rejected"
         attempt.setdefault("cost_by_agent", {})["documentation"] = 0.0
         return 0.0
-    attempt["report_markdown"] = doc.get("report_markdown")
-    attempt["doc_status"] = doc.get("doc_status")
-    cost = round(doc.get("cost_usd", 0.0), 5)
+    attempt["report_markdown"] = report
+    attempt["doc_status"] = status
     attempt.setdefault("cost_by_agent", {})["documentation"] = cost
     return cost
 
