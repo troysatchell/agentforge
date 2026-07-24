@@ -1,5 +1,4 @@
-"""PERF2 / TRO-131 — load/baseline profiling harness (STUB for the RED phase;
-replaced by the PERF2 coding agent).
+"""PERF2 / TRO-131 — load/baseline profiling harness.
 
 Runs a representative attack workload through injected stage callables, timing
 each stage, and reports per-stage latency + throughput + the bottleneck — the

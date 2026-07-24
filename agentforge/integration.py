@@ -1,5 +1,4 @@
-"""INT1 / TRO-132 — end-to-end contract trace (STUB for the RED phase; replaced
-by the INT1 coding agent).
+"""INT1 / TRO-132 — end-to-end contract trace.
 
 Drives a full directive -> attack -> verdict -> report chain through the frozen
 ``contracts/v1`` edges, validating each hop against its published schema — the
