@@ -15,13 +15,16 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-dev = [
-    "pytest>=8.0",
-    "httpx>=0.27",
-]
 web = [
     "fastapi>=0.110",
     "uvicorn[standard]>=0.29",
+]
+dev = [
+    "pytest>=8.0",
+    "httpx>=0.27",
+    # the web console + its tests (tests/test_web_*.py) need these, so the test
+    # env — `pip install -e '.[dev]'` (CLAUDE.md + CI) — must include the web extra.
+    "agentforge[web]",
 ]
 
 [tool.hatch.build.targets.wheel]

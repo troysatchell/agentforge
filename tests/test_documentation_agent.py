@@ -251,7 +251,8 @@ def test_anthropic_client_builds_body_and_parses_text() -> None:
     assert out == "DRAFTED REPORT BODY"
     body = transport.calls["body"]  # type: ignore[attr-defined]
     assert body["model"] == "claude-opus-4-8"
-    assert body["system"] == "SYS"
+    # TRO-155: system may be a plain string or a cache-marked content-block list.
+    assert "SYS" in str(body["system"])
     assert any(m["role"] == "user" and "USR" in str(m["content"]) for m in body["messages"])
 
 

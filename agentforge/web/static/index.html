@@ -167,6 +167,19 @@
   .approve{color:var(--held);border-color:rgba(67,211,146,.45)}.approve:hover{background:rgba(67,211,146,.1)}
   .hold{color:var(--muted)}.hold:hover{border-color:var(--line2)}
   .find.approved{opacity:.55}.approvedtag{font-family:var(--mono);font-size:10px;color:var(--held);white-space:nowrap}
+  /* CON4 · drill-down + CON5 · provenance chips */
+  .rowwrap{border-bottom:1px solid var(--line);animation:in .3s ease}
+  .rowwrap .row{border-bottom:none;cursor:pointer}.rowwrap .row:hover{background:rgba(255,255,255,.015)}
+  .rowwrap .row:focus{outline:1px solid var(--accent);outline-offset:-1px}.rowwrap .row:focus:not(:focus-visible){outline:none}
+  .row .exp{font-family:var(--mono);font-size:10px;color:var(--dim);margin-left:12px}
+  .pchip{font-family:var(--mono);font-size:9.5px;letter-spacing:.03em;padding:2px 7px;border-radius:10px;margin-left:7px;vertical-align:middle}
+  .pchip.mt{color:var(--info);border:1px solid rgba(99,164,255,.35)}.pchip.mu{color:var(--partial);border:1px solid rgba(255,184,77,.35)}
+  .rowdet{display:none;padding:2px 4px 16px 42px}.rowdet.on{display:block;animation:in .25s ease}
+  .trace{border-left:1px solid var(--line2);padding-left:14px;margin:6px 0 13px}
+  .tr{display:flex;gap:12px;padding:4px 0;font-family:var(--mono);font-size:11px}
+  .tr .ta{width:92px;flex:none;color:var(--accent)}.tr .tn{flex:1;color:var(--muted)}.tr .tm{color:var(--dim);white-space:nowrap}
+  .rlab{font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--dim);margin-bottom:6px}
+  .repro{font-family:var(--mono);font-size:10.5px;color:var(--text);background:var(--bg);border:1px solid var(--line2);border-radius:8px;padding:11px 13px;margin:0;white-space:pre-wrap;word-break:break-word;line-height:1.5}
 </style>
 </head>
 <body>
@@ -298,10 +311,22 @@ function paint(){
   $("#agcost").innerHTML=ag.map(([k,nm,det])=>`<div class="agrow"><span class="an${det?" det":""}">${nm}${det?" · $0":""}</span><span class="at"><i style="width:${live.agcost[k]/mx*100}%"></i></span><span class="av">$${live.agcost[k].toFixed(4)}</span></div>`).join("");
   $("#cpf").textContent=live.b.success?("$"+(live.cost/live.b.success).toFixed(4)):"—";
 }
-function addRow(a){const row=el("div","row");row.innerHTML=`<span class="seq">${String(a.seq).padStart(2,"0")}</span>
-  <div><span class="cat">${esc(CAT[a.category]||a.category)}</span> <span class="sub">${esc(a.subcategory)}</span><div class="route">${esc(a.route)}</div>${a.predicate?`<div class="pred">${esc(a.predicate)}</div>`:""}</div>
-  <div class="r"><span class="http">HTTP ${esc(a.http_status)}</span><span class="pill ${esc(a.verdict)}">${a.verdict==="fail"?"held":esc(a.verdict)}</span></div>`;
-  const f=$("#feed");f.insertBefore(row,f.firstChild);}
+function con5chips(a){let c="";if(a.turns>1)c+=`<span class="pchip mt">multi-turn · ${esc(a.turns)} turns</span>`;if(a.mutation_of)c+=`<span class="pchip mu">mutation of #${esc(a.mutation_of)}</span>`;return c;}
+function rowDetail(a){
+  const tr=(a.trace||[]).map(h=>`<div class="tr"><span class="ta">${esc(h.agent)}</span><span class="tn">${esc(h.note)}</span><span class="tm">${h.ms!=null?(h.ms/1000).toFixed(1)+"s":""}${h.cost_usd!=null?" · $"+Number(h.cost_usd).toFixed(4):""}</span></div>`).join("");
+  const repro=a.repro?`<div class="rlab">Minimal reproduction · PHI-free request</div><pre class="repro">${esc(a.repro.route)}\n${esc(JSON.stringify(a.repro.payload,null,2))}</pre>`:"";
+  return `<div class="trace">${tr}</div>${repro}`;
+}
+function addRow(a){const wrap=el("div","rowwrap");
+  wrap.innerHTML=`<div class="row" tabindex="0" role="button" aria-expanded="false" aria-label="attempt ${esc(a.seq)} — expand trace"><span class="seq">${String(a.seq).padStart(2,"0")}</span>
+  <div><span class="cat">${esc(CAT[a.category]||a.category)}</span> <span class="sub">${esc(a.subcategory)}</span>${con5chips(a)}<div class="route">${esc(a.route)}</div>${a.predicate?`<div class="pred">${esc(a.predicate)}</div>`:""}</div>
+  <div class="r"><span class="http">HTTP ${esc(a.http_status)}</span><span class="pill ${esc(a.verdict)}">${a.verdict==="fail"?"held":esc(a.verdict)}</span><span class="exp">▾</span></div></div>
+  <div class="rowdet">${rowDetail(a)}</div>`;
+  const row=wrap.querySelector(".row"), det=wrap.querySelector(".rowdet"), exp=wrap.querySelector(".exp");
+  const toggle=()=>{const on=det.classList.toggle("on");exp.textContent=on?"▴":"▾";row.setAttribute("aria-expanded",on);};
+  row.onclick=toggle;
+  row.onkeydown=e=>{if(e.key==="Enter"||e.key===" "){e.preventDefault();toggle();}};
+  const f=$("#feed");f.insertBefore(wrap,f.firstChild);}
 function onAttempt(a){
   live.seen++;live.cost+=a.cost_usd||0;if(a.verdict in live.b)live.b[a.verdict]++;
   const cba=a.cost_by_agent||{red_team:a.cost_usd||0,judge:0,documentation:0};
@@ -321,6 +346,20 @@ function renderFinding(a){
        ${gated?`<div class="fact"><button class="approve">✓ Approve</button><button class="hold">Hold</button></div>`:""}</div>
      ${gated?`<span class="gate" id="g-${fid}">⏸ awaiting approval</span>`:'<span class="fcat">open</span>'}`);
   $("#findings").appendChild(node);
+  if(a.report_markdown){
+    const doc=el("div","docwrap",
+      `<div class="fact"><button class="viewrep">📄 View report</button><button class="dlrep">⬇ Download .md</button>`
+      +`<span class="fcat">Documentation · Opus 4.8 · ${esc(a.doc_status||"")}</span></div>`
+      +`<pre class="report" style="display:none;white-space:pre-wrap;font-family:var(--mono);font-size:11px;line-height:1.5;color:var(--fg);background:#0d1117;border:1px solid var(--line2);border-radius:6px;padding:10px;margin-top:8px;max-height:340px;overflow:auto"></pre>`);
+    node.appendChild(doc);
+    const pre=doc.querySelector(".report");pre.textContent=a.report_markdown;
+    doc.querySelector(".viewrep").onclick=()=>{pre.style.display=pre.style.display==="none"?"block":"none";};
+    doc.querySelector(".dlrep").onclick=()=>{
+      const blob=new Blob([a.report_markdown],{type:"text/markdown"});
+      const u=URL.createObjectURL(blob);const l=document.createElement("a");
+      l.href=u;l.download=fid+".md";document.body.appendChild(l);l.click();l.remove();URL.revokeObjectURL(u);
+    };
+  }
   if(gated)node.querySelector(".approve").onclick=()=>approveFinding(fid,node);
   updateGate();
 }
