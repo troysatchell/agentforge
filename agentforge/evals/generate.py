@@ -8,6 +8,8 @@ round-trips through ``run_case`` to reproduce the finding.
 
 from __future__ import annotations
 
+from pathlib import Path
+
 from agentforge.contracts.result import AttackResult
 from agentforge.contracts.verdict import Verdict
 from agentforge.evals.case import EvalCase, ExpectedVerdict, OracleConfig
@@ -58,3 +60,21 @@ def to_eval_case(
         expected=expected,
         provenance=provenance,
     )
+
+
+def persist_eval_case(case: EvalCase, cases_dir: str | Path) -> Path:
+    """Write ``case`` into the corpus at ``<cases_dir>/<case_id>.json``.
+
+    Follows the id==filename convention the corpus uses: the file is named after
+    the case's ``case_id``. ``cases_dir`` (and any missing parents) is created if
+    needed. Dedup by ``case_id`` — refuse to clobber an existing case file for the
+    same id, raising :class:`FileExistsError`. The JSON round-trips back through
+    ``EvalCase.model_validate``.
+    """
+    cases_dir = Path(cases_dir)
+    cases_dir.mkdir(parents=True, exist_ok=True)
+    out = cases_dir / f"{case.case_id}.json"
+    if out.exists():
+        raise FileExistsError(f"eval case already present, refusing to overwrite: {out}")
+    out.write_text(case.model_dump_json(indent=2))
+    return out
