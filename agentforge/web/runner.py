@@ -25,9 +25,10 @@ from datetime import datetime, timezone
 from typing import Any, AsyncIterator, Callable
 
 from agentforge.config import load_settings
-from agentforge.contracts.common import AttackCategory
-from agentforge.contracts.result import InputTurn
-from agentforge.contracts.verdict import Outcome, Severity
+from agentforge.contracts.common import AttackCategory, OwaspMapping
+from agentforge.contracts.result import AttackResult, InputTurn, TargetResponse
+from agentforge.contracts.verdict import Outcome, Severity, Verdict
+from agentforge.documentation import AnthropicClient, DocumentationAgent
 from agentforge.orchestrator import Orchestrator
 from agentforge.store import ExploitRecord
 from agentforge.target.allowlist import OutOfScopeError, TargetAllowlist
@@ -353,6 +354,100 @@ def orchestrator_verdict(
     return {"next_category": next_category, "next_reason": next_reason, "halt": halt}
 
 
+# --- 4th agent: Documentation (Opus 4.8) drafts a report on a confirmed breach ---
+_OPUS_IN, _OPUS_OUT = 15.0 / 1e6, 75.0 / 1e6  # rough claude-opus $/token (input / output)
+# prompt-cache rates (the doc agent caches the system prefix): write 1.25x input, read 0.10x
+_OPUS_CACHE_WRITE, _OPUS_CACHE_READ = _OPUS_IN * 1.25, _OPUS_IN * 0.10
+
+
+def _anthropic_post(url: str, headers: dict, body: Any) -> dict:
+    """POST to the Anthropic Messages API and return the parsed response dict.
+    Injected into AnthropicClient as its transport; monkeypatched in tests."""
+    data = json.dumps(body).encode()
+    req = urllib.request.Request(url, data=data, headers=dict(headers), method="POST")
+    try:
+        with urllib.request.urlopen(req, timeout=60) as r:
+            return json.loads(r.read().decode("utf-8", "replace"))
+    except urllib.error.HTTPError as e:
+        try:
+            return json.loads(e.read().decode("utf-8", "replace"))
+        except Exception:
+            return {"error": f"Anthropic HTTP {e.code}"}
+
+
+def _document_finding(attempt: dict) -> dict:
+    """Draft a vuln report for a confirmed console breach via the real Documentation
+    agent (Opus 4.8). Returns ``{report_markdown, doc_status, cost_usd}``. Rebuilds
+    the typed Verdict/AttackResult the agent needs from the PHI-free attempt — no
+    target-response body is used."""
+    s = load_settings()
+    category = AttackCategory(attempt["category"])
+    owasp_str = attempt.get("owasp") or ""
+    owasp = OwaspMapping(
+        web=owasp_str if owasp_str.startswith("A") else None,
+        llm=owasp_str if owasp_str.startswith("LLM") else None,
+    )
+    repro = attempt.get("repro") or {}
+    turn = InputTurn(turn_index=0, route=str(repro.get("route") or "-"), payload=repro.get("payload") or {})
+    seq_hash = str(attempt.get("attack_id") or uuid.uuid4())
+    target_version = (s.target_base_url or "live-target").split("://")[-1].split("/")[0]
+    correlation_id = f"console-{attempt.get('attack_id', '')}"
+    result = AttackResult(
+        attack_id=uuid.uuid4(), correlation_id=correlation_id, attack_category=category,
+        owasp_mapping=owasp, sequence_hash=seq_hash, input_sequence=[turn],
+        target_response=TargetResponse(http_status=int(attempt.get("http_status") or 200), body={}),
+        target_version=target_version, executed_at=datetime.now(timezone.utc),
+    )
+    verdict = Verdict(
+        verdict_id=uuid.uuid4(), attack_id=result.attack_id, correlation_id=correlation_id,
+        outcome=Outcome.SUCCESS, predicate_fired=attempt.get("predicate") or "confirmed breach",
+        severity=Severity(attempt.get("severity") or "high"), attack_category=category,
+        owasp_mapping=owasp, regression_flag=False, target_version=target_version,
+        adjudicated_at=datetime.now(timezone.utc),
+    )
+    usage: dict = {}
+
+    def _transport(url: str, headers: dict, body: Any) -> dict:
+        resp = _anthropic_post(url, headers, body)
+        if isinstance(resp, dict) and isinstance(resp.get("usage"), dict):
+            usage.update(resp["usage"])
+        return resp
+
+    client = AnthropicClient(
+        api_key=s.anthropic_api_key, base_url="https://api.anthropic.com",
+        model=s.doc_model, transport=_transport,
+    )
+    outcome = DocumentationAgent(client).document(verdict, result)
+    cost = round(
+        usage.get("input_tokens", 0) * _OPUS_IN
+        + usage.get("output_tokens", 0) * _OPUS_OUT
+        + usage.get("cache_creation_input_tokens", 0) * _OPUS_CACHE_WRITE
+        + usage.get("cache_read_input_tokens", 0) * _OPUS_CACHE_READ,
+        5,
+    )
+    return {"report_markdown": outcome.report_markdown, "doc_status": outcome.status, "cost_usd": cost}
+
+
+async def _attach_report(attempt: dict, documenter: Callable[[dict], dict]) -> float:
+    """Draft + attach the vuln report for a confirmed breach. Mutates the attempt
+    (report_markdown, doc_status, documentation cost) and returns the doc cost. An
+    Opus failure degrades to a ``rejected`` status — the campaign continues."""
+    try:
+        doc = await asyncio.to_thread(documenter, attempt)
+        report = doc.get("report_markdown")
+        status = doc.get("doc_status")
+        cost = round(float(doc.get("cost_usd", 0.0) or 0.0), 5)
+    except Exception:  # noqa: BLE001 — a doc failure OR malformed output must not abort the sweep
+        attempt["report_markdown"] = None
+        attempt["doc_status"] = "rejected"
+        attempt.setdefault("cost_by_agent", {})["documentation"] = 0.0
+        return 0.0
+    attempt["report_markdown"] = report
+    attempt["doc_status"] = status
+    attempt.setdefault("cost_by_agent", {})["documentation"] = cost
+    return cost
+
+
 def _is_timeout(exc: BaseException) -> bool:
     return (
         isinstance(exc, TimeoutError)
@@ -391,6 +486,7 @@ async def _run_probe(runner_fn: Callable[..., dict], token: str, spec: tuple, se
 async def run_campaign(
     token: str, categories: list[str] | None = None, *, budget_usd: float = _BUDGET_USD,
     run_one: Callable[..., dict] | None = None,
+    documenter: Callable[[dict], dict] | None = None,
 ) -> AsyncIterator[dict]:
     """Async generator: yields {"event","data"} dicts for SSE as the campaign runs.
 
@@ -403,6 +499,7 @@ async def run_campaign(
     ``monkeypatch.setattr(runner, "_run_one", ...)`` is still honoured.
     """
     runner_fn = run_one if run_one is not None else _run_one
+    documenter_fn = documenter if documenter is not None else _document_finding
     plan = [p for p in PLAN if not categories or p[0] in categories]
     STATE.active = True
     STATE.stop = False
@@ -432,6 +529,7 @@ async def run_campaign(
             coverage[category] = coverage.get(category, 0) + 1
             if attempt["verdict"] == "success":
                 breaches += 1
+                total += await _attach_report(attempt, documenter_fn)  # 4th agent: draft the vuln report
             yield {"event": "attempt", "data": attempt}
 
             # CON5 mutation provenance: a base PARTIAL is a near-miss worth one
@@ -451,6 +549,7 @@ async def run_campaign(
                 total += mutation["cost_usd"]
                 if mutation["verdict"] == "success":
                     breaches += 1
+                    total += await _attach_report(mutation, documenter_fn)
                 yield {"event": "attempt", "data": mutation}
 
             if STATE.stop:  # operator halt wins over a same-iteration cost halt
