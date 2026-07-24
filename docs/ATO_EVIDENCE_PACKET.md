@@ -101,7 +101,7 @@ data. The platform's discipline:
 
 | Control | Mechanism | Evidence |
 |---|---|---|
-| **Reach the target only as the delegated physician** | SMART launch chain (login → chart-menu launch → confidential code exchange) → **launch-bound token** | `target/client.py`; TRO-134 (driver done) |
+| **Reach the target only as the delegated physician** | SMART launch chain (login → chart-menu launch → confidential code exchange) → **launch-bound token** | `target/client.py` (code→token exchange leg; full login→launch→PKCE chain automation tracked by TRO-153) |
 | **Hand-minted tokens are refused** | Clinical routes 403 anything not launch-bound (target-side TRO-52); launch-bound is the *only* path | THREAT_MODEL §D8 |
 | **Attack only the sanctioned host** | SSRF-safe target allow-list; off-target routes → `OutOfScopeError`; fails closed on malformed URLs | `target/allowlist.py` (14 tests) |
 | **Red Team ⟂ Judge** | Different providers (Moonshot vs Anthropic), different processes, no shared state; Judge treats Red Team hints as advisory and recomputes every signal | invariant #2; `judge/deterministic.py` |
