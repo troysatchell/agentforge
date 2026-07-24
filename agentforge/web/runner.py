@@ -176,7 +176,13 @@ def _run_one(token: str, spec: tuple, seq: int) -> dict:
     s = load_settings()
     category, sub, owasp, route_kind, patient, instruction = spec
     t0 = time.perf_counter()
-    fields, cost = _kimi_generate(instruction)
+    try:
+        fields, cost = _kimi_generate(instruction)
+    except Exception as exc:  # noqa: BLE001 — Kimi timeout/transport: label the leg, don't crash
+        secs = round(time.perf_counter() - t0)
+        verb = "timed out" if _is_timeout(exc) else f"failed ({type(exc).__name__})"
+        return _error_attempt(seq, spec, agent="red_team",
+                              note=f"Red Team (Kimi K2.6) generation {verb} after {secs}s")
     gen_ms = round((time.perf_counter() - t0) * 1000, 1)
     turn = _build_turn(route_kind, patient, fields)
     client = TargetClient(base_url=s.target_base_url, allowlist=TargetAllowlist(s.target_base_url), transport=_target_transport)
@@ -187,6 +193,11 @@ def _run_one(token: str, spec: tuple, seq: int) -> dict:
         status, body = resp.http_status, resp.body
     except (TargetClientError, OutOfScopeError) as e:
         status, body, client_error = 0, "", str(e)[:200]
+    except Exception as exc:  # noqa: BLE001 — target timeout/transport: label the leg, don't crash
+        secs = round(time.perf_counter() - t1)
+        verb = "timed out" if _is_timeout(exc) else f"failed ({type(exc).__name__})"
+        return _error_attempt(seq, spec, agent="target", cost=cost,
+                              note=f"target {verb} after {secs}s (co-pilot too slow / unreachable)")
     fire_ms = round((time.perf_counter() - t1) * 1000, 1)
     body_text = json.dumps(body) if isinstance(body, (dict, list)) else str(body)
     if client_error is not None:
@@ -213,7 +224,10 @@ def _run_one(token: str, spec: tuple, seq: int) -> dict:
 
 
 def _target_transport(method: str, url: str, headers: dict, body: Any) -> tuple[int, Any]:
-    return _http(method, url, headers, body, timeout=60)
+    # The live co-pilot does its own LLM/retrieval work (Railway-hosted) and can
+    # take 30-60s to answer a turn; keep the ceiling generous so a legit-but-slow
+    # response isn't cut off. Genuine hangs still degrade to an error attempt.
+    return _http(method, url, headers, body, timeout=90)
 
 
 _BUDGET_USD = 5.0
@@ -339,6 +353,41 @@ def orchestrator_verdict(
     return {"next_category": next_category, "next_reason": next_reason, "halt": halt}
 
 
+def _is_timeout(exc: BaseException) -> bool:
+    return (
+        isinstance(exc, TimeoutError)
+        or "timed out" in str(exc).lower()
+        or "timeout" in type(exc).__name__.lower()
+    )
+
+
+def _error_attempt(seq: int, spec: tuple, *, note: str, agent: str = "target", cost: float = 0.0) -> dict:
+    """A PHI-free 'platform error' attempt. One slow/failed leg (Kimi or target)
+    degrades to this instead of aborting the campaign — the sweep continues to the
+    remaining categories. ``note`` says which leg failed and how long it waited."""
+    category, sub, owasp, *_ = spec
+    return {
+        "seq": seq, "attack_id": str(uuid.uuid4()), "category": category, "subcategory": sub,
+        "owasp": owasp, "route": "-", "http_status": 0, "verdict": "error", "severity": "low",
+        "predicate": note, "cost_usd": round(cost, 5),
+        "agent_path": ["orchestrator", "red_team", "target", "judge"],
+        "trace": [{"agent": agent, "note": note, "cost_usd": round(cost, 5), "ms": None}],
+        "repro": {}, "turns": 1, "mutation_of": None,
+        "ts": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
+    }
+
+
+async def _run_probe(runner_fn: Callable[..., dict], token: str, spec: tuple, seq: int) -> dict:
+    """Run one probe off the event loop. ``_run_one`` already labels Kimi/target
+    failures per-leg; this is the backstop for anything unexpected so a single bad
+    probe can't abort the whole sweep."""
+    try:
+        return await asyncio.to_thread(runner_fn, token, spec, seq)
+    except Exception as exc:  # noqa: BLE001 — one probe must not abort the sweep
+        verb = "timed out" if _is_timeout(exc) else f"failed ({type(exc).__name__})"
+        return _error_attempt(seq, spec, note=f"platform error: probe {verb} — {spec[0]} skipped")
+
+
 async def run_campaign(
     token: str, categories: list[str] | None = None, *, budget_usd: float = _BUDGET_USD,
     run_one: Callable[..., dict] | None = None,
@@ -377,7 +426,7 @@ async def run_campaign(
                    "data": {"seq": i, "category": category, "reason": _next_reason(category, coverage),
                             "orchestrator_next": decision["next_category"],
                             "orchestrator_reason": decision["next_reason"]}}
-            attempt = await asyncio.to_thread(runner_fn, token, spec, i)
+            attempt = await _run_probe(runner_fn, token, spec, i)
             attempt["cost_by_agent"] = _cost_by_agent(attempt)
             total += attempt["cost_usd"]
             coverage[category] = coverage.get(category, 0) + 1
@@ -396,7 +445,7 @@ async def run_campaign(
                 and not STATE.stop  # an operator halt after the base attempt cancels the mutation
             ):
                 next_seq += 1
-                mutation = await asyncio.to_thread(runner_fn, token, spec, next_seq)
+                mutation = await _run_probe(runner_fn, token, spec, next_seq)
                 mutation["mutation_of"] = attempt["seq"]
                 mutation["cost_by_agent"] = _cost_by_agent(mutation)
                 total += mutation["cost_usd"]
