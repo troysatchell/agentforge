@@ -50,3 +50,9 @@ def test_persist_refuses_to_overwrite_an_existing_case(tmp_path: Path) -> None:
     persist_eval_case(case, tmp_path)
     with pytest.raises(FileExistsError):
         persist_eval_case(case, tmp_path)  # same case_id → dedup, no clobber
+
+
+def test_persist_rejects_a_path_traversal_case_id(tmp_path: Path) -> None:
+    evil = _a_case().model_copy(update={"case_id": "../escape"})
+    with pytest.raises(ValueError):
+        persist_eval_case(evil, tmp_path)  # must not write outside the corpus dir

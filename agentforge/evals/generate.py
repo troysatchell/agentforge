@@ -71,10 +71,16 @@ def persist_eval_case(case: EvalCase, cases_dir: str | Path) -> Path:
     same id, raising :class:`FileExistsError`. The JSON round-trips back through
     ``EvalCase.model_validate``.
     """
+    # case_id must be a plain filename — never a path that escapes the corpus dir
+    if case.case_id != Path(case.case_id).name or case.case_id in ("", ".", ".."):
+        raise ValueError(f"unsafe case_id for a filename: {case.case_id!r}")
     cases_dir = Path(cases_dir)
     cases_dir.mkdir(parents=True, exist_ok=True)
     out = cases_dir / f"{case.case_id}.json"
-    if out.exists():
-        raise FileExistsError(f"eval case already present, refusing to overwrite: {out}")
-    out.write_text(case.model_dump_json(indent=2))
+    try:
+        # exclusive create — atomic dedup; no exists()/write() race, no truncation
+        with out.open("x", encoding="utf-8") as fh:
+            fh.write(case.model_dump_json(indent=2))
+    except FileExistsError as exc:
+        raise FileExistsError(f"eval case already present, refusing to overwrite: {out}") from exc
     return out
