@@ -313,7 +313,7 @@ function paint(){
 }
 function con5chips(a){let c="";if(a.turns>1)c+=`<span class="pchip mt">multi-turn · ${esc(a.turns)} turns</span>`;if(a.mutation_of)c+=`<span class="pchip mu">mutation of #${esc(a.mutation_of)}</span>`;return c;}
 function rowDetail(a){
-  const tr=(a.trace||[]).map(h=>`<div class="tr"><span class="ta">${esc(h.agent)}</span><span class="tn">${esc(h.note)}</span><span class="tm">${h.ms!=null?esc(h.ms)+"ms":""}${h.cost_usd!=null?" · $"+Number(h.cost_usd).toFixed(4):""}</span></div>`).join("");
+  const tr=(a.trace||[]).map(h=>`<div class="tr"><span class="ta">${esc(h.agent)}</span><span class="tn">${esc(h.note)}</span><span class="tm">${h.ms!=null?(h.ms/1000).toFixed(1)+"s":""}${h.cost_usd!=null?" · $"+Number(h.cost_usd).toFixed(4):""}</span></div>`).join("");
   const repro=a.repro?`<div class="rlab">Minimal reproduction · PHI-free request</div><pre class="repro">${esc(a.repro.route)}\n${esc(JSON.stringify(a.repro.payload,null,2))}</pre>`:"";
   return `<div class="trace">${tr}</div>${repro}`;
 }
